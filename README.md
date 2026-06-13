@@ -7,30 +7,30 @@ It currently integrates [llama.cpp](https://github.com/ggerganov/llama.cpp), [LM
 New integrations with vLLM and Ollama are on the roadmap.
 
 ---
-<img width="1526" height="1050" alt="Screenshot 2026-05-30 at 1 50 30 AM" src="https://github.com/user-attachments/assets/ecb1d3ae-ce39-4622-982a-490169888e6c" />
+<img width="1526" height="1050" alt="Login screen" src="docs/screenshots/login.png" />
 
 **Llama dashboard** - view real time metrics on the llama.cpp server
-<img width="2759" height="1270" alt="Screenshot 2026-06-11 at 5 20 59 PM" src="https://github.com/user-attachments/assets/47dfbb0b-c8bc-41a2-906f-b1a1083a326d" />
+<img width="2759" height="1270" alt="Llama dashboard" src="docs/screenshots/dashboard-llama.png" />
 
 **Lmstudio dashboard** - view real time metrics on the lmstudio server
-<img width="2767" height="1270" alt="Screenshot 2026-06-11 at 5 10 09 PM" src="https://github.com/user-attachments/assets/ba4d0055-0911-40db-8351-ca738557407e" />
+<img width="2767" height="1270" alt="LM Studio dashboard" src="docs/screenshots/dashboard-lmstudio.png" />
 
 **Model control** — start/stop inference servers, change models, control the provider, manage the model library, run benchmarks, auto tune models.
-<img width="2756" height="1269" alt="Screenshot 2026-06-11 at 5 09 00 PM" src="https://github.com/user-attachments/assets/20a4e4f8-1042-407b-a83d-bb415e1a7c0b" />
-<img width="2668" height="1265" alt="Screenshot 2026-06-11 at 5 24 45 PM" src="https://github.com/user-attachments/assets/4b2047be-d1db-4a07-8e05-bcde22c76b12" />
-<img width="2767" height="1049" alt="Screenshot 2026-06-11 at 5 13 28 PM" src="https://github.com/user-attachments/assets/c5998e83-d7be-4c5f-aea4-50093ba73be1" />
+<img width="2756" height="1269" alt="Model control" src="docs/screenshots/model-control.png" />
+<img width="2668" height="1265" alt="Model control detail" src="docs/screenshots/model-control-2.png" />
+<img width="2767" height="1049" alt="Model control cards" src="docs/screenshots/model-control-cards.png" />
 
-**Openclaw dashboard** - openclaw metrics and analystics
-<img width="2767" height="1270" alt="Screenshot 2026-06-11 at 5 10 21 PM" src="https://github.com/user-attachments/assets/fa29a2a6-a9d7-4fa6-b5ee-e3f42fa9f826" />
+**Openclaw dashboard** - openclaw metrics and analytics
+<img width="2767" height="1270" alt="OpenClaw dashboard" src="docs/screenshots/dashboard-openclaw.png" />
 
 **Manager dashboard** — view overall manager and agent health.
-<img width="2580" height="1279" alt="Screenshot 2026-06-12 at 3 01 59 PM" src="https://github.com/user-attachments/assets/20695c13-eabc-4df5-ae36-a77abfb8d237" />
+<img width="2580" height="1279" alt="Manager dashboard" src="docs/screenshots/dashboard-manager.png" />
 
 **Alarm engine** — trend graphs, rule and notification editor, alert timeline.
-<img width="2135" height="1151" alt="Screenshot 2026-05-30 at 1 58 14 AM" src="https://github.com/user-attachments/assets/0f20956b-783f-4f7b-ade6-a477beb781fd" />
+<img width="2135" height="1151" alt="Alarm engine" src="docs/screenshots/alarm-console.png" />
 
 **Admin console** - agent management, user & login management, backup/restore, routing of agent tasks
-<img width="2580" height="1283" alt="Screenshot 2026-06-12 at 3 06 27 PM" src="https://github.com/user-attachments/assets/857f4f06-4ab8-41b8-8cb0-5703dd0002ff" />
+<img width="2580" height="1283" alt="Admin console" src="docs/screenshots/admin-console.png" />
 
 
 
