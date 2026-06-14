@@ -82,3 +82,33 @@ def test_update_config_success_writes_db_then_cache():
     assert updated is not None and updated.name == "updated"
     assert db.written[str(cfg.config_id)]["name"] == "updated"
     assert cache.get(f"config:{cfg.config_id}")["name"] == "updated"
+
+
+def test_update_config_success_is_durable_across_cache_flush():
+    # The actual #12 symptom was a silent revert on restart. After a flush,
+    # reads fall back to the DB and must return the updated value.
+    cache = MetricCache()
+    db = _OkSettingsDB()
+    repo = NotificationRepository(cache, db)
+    cfg = _seed_config(cache, name="original")
+
+    repo.update_config(cfg.config_id, NotificationConfigUpdate(name="updated"))
+
+    cache.delete(f"config:{cfg.config_id}")
+    reloaded = repo.get_config(cfg.config_id)
+    assert reloaded is not None and reloaded.name == "updated"
+
+
+def test_update_config_failed_persist_does_not_mutate_cached_channels():
+    # channels is the one nested-list field; a failed update must not rebind
+    # it on the cached dict (guards the dict(data) shallow copy).
+    cache = MetricCache()
+    db = _RaisingSettingsDB()
+    repo = NotificationRepository(cache, db)
+    cfg = _seed_config(cache, name="original")
+    new_channel = uuid.uuid4()
+
+    with pytest.raises(RuntimeError):
+        repo.update_config(cfg.config_id, NotificationConfigUpdate(channels=[new_channel]))
+
+    assert cache.get(f"config:{cfg.config_id}")["channels"] == []
