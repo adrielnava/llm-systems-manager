@@ -728,6 +728,7 @@ class NotificationRepository:
             data = self.settings_db.get_config(str(config_id))
         if not data:
             return None
+        data = dict(data)
         update_data = update.model_dump(exclude_none=True)
         if "channels" in update_data and update_data["channels"] is not None:
             update_data["channels"] = [str(c) for c in update_data["channels"]]
@@ -737,12 +738,9 @@ class NotificationRepository:
             config = self._dict_to_config(data)
         except Exception:
             return None
-        self.cache.set(f"config:{config_id}", config.to_dict())
         if self.settings_db:
-            try:
-                self.settings_db.write_config(config.to_dict())
-            except Exception as e:
-                logger.warning("Failed to persist config %s to SQLite: %s", config_id, e)
+            self.settings_db.write_config(config.to_dict())
+        self.cache.set(f"config:{config_id}", config.to_dict())
         return config
 
     def delete_config(self, config_id: uuid.UUID) -> bool:
