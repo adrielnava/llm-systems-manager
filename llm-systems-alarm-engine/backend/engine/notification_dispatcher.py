@@ -18,7 +18,6 @@ from uuid import uuid4
 
 import httpx
 
-from .._best_effort import best_effort
 from ..models.alert import Alert
 from ..models.notification import (
     ChannelType,
@@ -112,30 +111,6 @@ class NotificationDispatcher:
                 self._channels_enabled["webhook"] = channel.enabled
             elif channel.channel_type == ChannelType.DISCORD:
                 self._channels_enabled["discord"] = channel.enabled
-
-    def _get_all_channels(self) -> list[NotificationChannel]:
-        """Return channels from repository (authoritative) merged with in-memory additions."""
-        if self.notification_repository is not None:
-            with best_effort("schedule async channel refresh", log=logger):
-                import asyncio as _asyncio
-                loop = _asyncio.get_event_loop()
-                if loop.is_running():
-                    # We're inside an async context — fire-and-forget schedule.
-                    # Can't await here (sync method); return in-memory channels
-                    # below as a fallback and rely on the async caller to refresh.
-                    _asyncio.ensure_future(self.notification_repository.list_channels())
-            # Synchronous fallback: scan cache directly
-            with best_effort("load channels from cache", log=logger):
-                cached = self.notification_repository.cache.get_all_prefixed("channel:")
-                from ..models.notification import NotificationChannel as _NCh
-                channels: list[NotificationChannel] = []
-                for item in cached:
-                    with best_effort("deserialize cached channel", log=logger):
-                        ch = _NCh(**item) if isinstance(item, dict) else item
-                        channels.append(ch)
-                if channels:
-                    return channels
-        return list(self._channels.values())
 
     async def _get_all_channels_async(self) -> list[NotificationChannel]:
         """Async version: load channels from repository if wired, otherwise fall back to in-memory."""
