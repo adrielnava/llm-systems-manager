@@ -4,6 +4,7 @@ import json
 import logging
 import uuid
 from datetime import datetime, timezone
+from .._best_effort import best_effort
 from .._time import now_utc
 from typing import Any, Optional
 
@@ -59,10 +60,8 @@ class RuleRepository:
         """Get a rule by ID, checking cache first."""
         cached = self.cache.get(f"rule:{rule_id}")
         if cached:
-            try:
+            with best_effort("deserialize cached rule", log=logger):
                 return self._dict_to_rule(cached)
-            except Exception:
-                pass
 
         if self.settings_db is None:
             return None
@@ -196,11 +195,9 @@ class RuleRepository:
 
     def delete_all(self) -> bool:
         """Admin: wipe every rule from cache + persistent store."""
-        try:
+        with best_effort("clear rule cache entries", log=logger):
             for r in self.get_all():
                 self.cache.delete(f"rule:{r.rule_id}")
-        except Exception:
-            pass
         self._invalidate_all_cache()
         if self.settings_db is not None:
             try:
@@ -711,10 +708,8 @@ class NotificationRepository:
         """Get a notification config by ID."""
         cached = self.cache.get(f"config:{config_id}")
         if cached:
-            try:
+            with best_effort("deserialize cached config", log=logger):
                 return self._dict_to_config(cached)
-            except Exception:
-                pass
         if self.settings_db:
             item = self.settings_db.get_config(str(config_id))
             if item:
@@ -746,8 +741,8 @@ class NotificationRepository:
         if self.settings_db:
             try:
                 self.settings_db.write_config(config.to_dict())
-            except Exception:
-                pass
+            except Exception as e:
+                logger.warning("Failed to persist config %s to SQLite: %s", config_id, e)
         return config
 
     def delete_config(self, config_id: uuid.UUID) -> bool:

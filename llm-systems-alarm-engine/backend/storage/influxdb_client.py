@@ -2,6 +2,7 @@
 
 import logging
 from datetime import datetime, timedelta
+from .._best_effort import best_effort
 from .._time import now_utc
 from typing import Any, Optional
 
@@ -478,23 +479,17 @@ class InfluxDBClient:
             # would go blank; gate that via the read-side fallback instead.
             return {"error": str(e)}
         finally:
-            try:
+            with best_effort("close rollup admin client", log=logger):
                 admin_client.close()
-            except Exception:
-                pass
 
     def close(self) -> None:
         """Close all per-bucket InfluxDB clients."""
         for api in (self._metrics_write,):
-            try:
+            with best_effort("close influx write api", log=logger):
                 api.close()
-            except Exception:
-                pass
         clients = [self._metrics_client]
         if self._rollup_client is not None:
             clients.append(self._rollup_client)
         for client in clients:
-            try:
+            with best_effort("close influx client", log=logger):
                 client.close()
-            except Exception:
-                pass

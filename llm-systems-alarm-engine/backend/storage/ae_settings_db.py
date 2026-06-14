@@ -9,6 +9,7 @@ needlessly slow. Single SQLite file, three tables, sub-ms reads.
 
 import logging
 import sqlite3
+from .._best_effort import best_effort
 from .._time import now_utc
 from pathlib import Path
 from typing import Any, Optional
@@ -119,10 +120,8 @@ class AeSettingsDB:
 
     def close(self) -> None:
         with self._lock:
-            try:
+            with best_effort("close ae_settings_db connection", log=logger):
                 self._conn.close()
-            except Exception:
-                pass
 
     # ── Rules ────────────────────────────────────────────────────────────
 

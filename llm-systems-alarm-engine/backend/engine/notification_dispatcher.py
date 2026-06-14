@@ -18,6 +18,7 @@ from uuid import uuid4
 
 import httpx
 
+from .._best_effort import best_effort
 from ..models.alert import Alert
 from ..models.notification import (
     ChannelType,
@@ -115,7 +116,7 @@ class NotificationDispatcher:
     def _get_all_channels(self) -> list[NotificationChannel]:
         """Return channels from repository (authoritative) merged with in-memory additions."""
         if self.notification_repository is not None:
-            try:
+            with best_effort("schedule async channel refresh", log=logger):
                 import asyncio as _asyncio
                 loop = _asyncio.get_event_loop()
                 if loop.is_running():
@@ -123,23 +124,17 @@ class NotificationDispatcher:
                     # Can't await here (sync method); return in-memory channels
                     # below as a fallback and rely on the async caller to refresh.
                     _asyncio.ensure_future(self.notification_repository.list_channels())
-            except Exception:
-                pass
             # Synchronous fallback: scan cache directly
-            try:
+            with best_effort("load channels from cache", log=logger):
                 cached = self.notification_repository.cache.get_all_prefixed("channel:")
                 from ..models.notification import NotificationChannel as _NCh
                 channels: list[NotificationChannel] = []
                 for item in cached:
-                    try:
+                    with best_effort("deserialize cached channel", log=logger):
                         ch = _NCh(**item) if isinstance(item, dict) else item
                         channels.append(ch)
-                    except Exception:
-                        pass
                 if channels:
                     return channels
-            except Exception:
-                pass
         return list(self._channels.values())
 
     async def _get_all_channels_async(self) -> list[NotificationChannel]:
