@@ -7,6 +7,7 @@ history. `refresh()` during a long-running alert is one UPDATE per cycle.
 
 import logging
 import sqlite3
+from .._best_effort import best_effort
 from .._time import now_utc
 from pathlib import Path
 from typing import Any, Optional
@@ -85,10 +86,8 @@ class AeAlarmsDB:
 
     def close(self) -> None:
         with self._lock:
-            try:
+            with best_effort("close ae_alarms_db connection", log=logger):
                 self._conn.close()
-            except Exception:
-                pass
 
     # ── Writes ───────────────────────────────────────────────────────────
 

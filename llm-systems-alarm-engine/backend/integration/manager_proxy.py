@@ -20,6 +20,7 @@ from typing import Optional, Dict
 import httpx
 from fastapi import WebSocket
 
+from .._best_effort import best_effort
 from config.unified_config import settings
 
 logger = logging.getLogger(__name__)
@@ -88,11 +89,9 @@ class AlarmWebSocketBridge:
             self._keepalive_task.cancel()
         async with self._lock:
             for conn in self._connections.values():
-                try:
+                with best_effort("close proxy websocket pair", log=logger):
                     await conn["manager_ws"].close()
                     conn["alarm_ws"].close()
-                except Exception:
-                    pass
             self._connections.clear()
 
     async def handle_connection(self, manager_ws: WebSocket):

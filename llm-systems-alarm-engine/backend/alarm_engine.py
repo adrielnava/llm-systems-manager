@@ -44,6 +44,7 @@ from fastapi.responses import FileResponse  # noqa: E402
 from fastapi.staticfiles import StaticFiles  # noqa: E402
 
 from config.unified_config import settings, CONFIG_PATH  # noqa: E402
+from ._best_effort import best_effort
 from .api.websocket import WebSocketConnectionManager, init_manager
 from .api.routes import alerts, ingest, metrics, notifications, rules
 from .receivers import otlp_receiver
@@ -64,7 +65,7 @@ from .storage.influxdb_client import InfluxDBClient
 # (-1, -2, …) for same-day iterations; roll the date for a new day's first
 # change.
 # ---------------------------------------------------------------------------
-__version__ = "v2026.06.09-3"
+__version__ = "v2026.06.14-1"
 from .storage import influx_monitor as _influx_monitor
 from .models.alarm_rule import (
     AlarmRuleCreate,
@@ -552,22 +553,22 @@ def _log_shutdown_banner() -> None:
     uptime = _fmt_uptime(time.time() - _startup_ts) if _startup_ts else "?"
     rules_n = channels_n = configs_n = deliveries_n = 0
     if ae_settings_db is not None:
-        try: rules_n = len(ae_settings_db.query_rules())
-        except Exception: pass
-        try: channels_n = len(ae_settings_db.query_channels())
-        except Exception: pass
-        try: configs_n = len(ae_settings_db.query_configs())
-        except Exception: pass
-        try: deliveries_n = len(ae_settings_db.query_deliveries(limit=100000))
-        except Exception: pass
+        with best_effort("shutdown banner: count rules"):
+            rules_n = len(ae_settings_db.query_rules())
+        with best_effort("shutdown banner: count channels"):
+            channels_n = len(ae_settings_db.query_channels())
+        with best_effort("shutdown banner: count configs"):
+            configs_n = len(ae_settings_db.query_configs())
+        with best_effort("shutdown banner: count deliveries"):
+            deliveries_n = len(ae_settings_db.query_deliveries(limit=100000))
 
     counts = {"total": 0, "by_status": {}, "by_severity": {}}
     active_rows: list[dict] = []
     if ae_alarms_db is not None:
-        try: counts = ae_alarms_db.count_by_status_and_severity()
-        except Exception: pass
-        try: active_rows = ae_alarms_db.query_active(limit=20)
-        except Exception: pass
+        with best_effort("shutdown banner: count alerts"):
+            counts = ae_alarms_db.count_by_status_and_severity()
+        with best_effort("shutdown banner: query active alerts"):
+            active_rows = ae_alarms_db.query_active(limit=20)
 
     logger.info("=" * 60)
     logger.info(f"LLM Systems Alarm Engine {__version__} shutting down")
@@ -1170,7 +1171,7 @@ def _ae_decode_upload(blob: bytes, password: str) -> _DecodedAE:
     if raw:
         try:
             manifest = json.loads(raw.decode("utf-8"))
-        except Exception:
+        except (json.JSONDecodeError, UnicodeDecodeError):
             pass
     if manifest.get("component") and manifest["component"] != "alarm_engine":
         raise HTTPException(
