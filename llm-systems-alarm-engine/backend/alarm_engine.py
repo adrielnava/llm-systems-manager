@@ -1171,7 +1171,7 @@ def _ae_decode_upload(blob: bytes, password: str) -> _DecodedAE:
     if raw:
         try:
             manifest = json.loads(raw.decode("utf-8"))
-        except (json.JSONDecodeError, UnicodeDecodeError):
+        except (json.JSONDecodeError, UnicodeDecodeError, RecursionError):
             pass
     if manifest.get("component") and manifest["component"] != "alarm_engine":
         raise HTTPException(
