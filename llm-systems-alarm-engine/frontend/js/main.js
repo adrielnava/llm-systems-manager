@@ -1339,7 +1339,6 @@ const ModalManager = {
 
     _wireOnce() {
         if (this._wired) return;
-        const overlay = document.getElementById('modalOverlay');
         const closeBtn = document.getElementById('modalCloseBtn');
         const cancelBtn = document.getElementById('modalCancelBtn');
         const confirmBtn = document.getElementById('modalConfirmBtn');
@@ -1486,10 +1485,6 @@ const ModalManager = {
             .map(m => m.hostname)
             .filter(h => h && (!known || known.has(h)))
         )].sort();
-        const liveSources = [...new Set(allMetrics.map(m => m.source))].sort();
-        const sources = liveSources.length > 0
-            ? liveSources
-            : ['cpu', 'gpu', 'ram', 'disk', 'net', 'psu', 'llama'];
         const ruleTypes = [
             ['threshold_above', 'Threshold above'],
             ['threshold_below', 'Threshold below'],

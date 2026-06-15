@@ -80,9 +80,6 @@ async function fetchLMStudioMetrics() {
   try {
     const d = await _fetchT('/api/lmstudio/metrics', {}, 10000).then(r => r.json());
     _lmsMetrics = d;
-    // Normalize ID for cross-referencing /v1/models vs lms ps
-    // /v1/models uses "qwen/qwen3.5-9b", lms ps uses "qwen_qwen3.5-9b"
-    function normId(id) { return (id || '').replace(/\//g, '_').toLowerCase(); }
 
     const sys    = d.system || {};
     const ps     = d.ps || [];

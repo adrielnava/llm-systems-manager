@@ -401,7 +401,6 @@ function _initLLMSections() {
 
   // Open server log panel
   const panel = document.getElementById('serverLogPanel');
-  const logBox = document.getElementById('serverLogBox');
   if (panel) {
     panel.style.display = '';
     _logPanelOpen = true;
