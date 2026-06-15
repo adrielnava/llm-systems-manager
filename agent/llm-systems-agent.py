@@ -59,7 +59,7 @@ except ImportError:
             os.chmod(tmp, mode)
         tmp.replace(p)
 
-VERSION = "v2026.06.14-2"
+VERSION = "v2026.06.15-2"
 
 
 def _detect_install_dir() -> str:
@@ -2497,7 +2497,8 @@ async def status_(authorization: Optional[str] = Header(default=None)) -> dict[s
             "terminal_sessions": len(getattr(providers.terminal, "_term_sessions", {})),
         }
     except Exception as e:
-        snap["streams"] = {"error": str(e)}
+        logger.warning("stream-health snapshot failed: %s", e)
+        snap["streams"] = {"error": "unavailable"}
     return snap
 
 
@@ -2763,8 +2764,9 @@ def agent_self_update(authorization: Optional[str] = Header(default=None)) -> St
                     try: os.remove(p)
                     except OSError: pass
         except Exception as e:
+            logger.warning("self-update: failed to clear repo dir: %s", e)
             yield _sse_event({"stage": "done", "ok": False,
-                              "msg": f"failed to clear {repo_dir}: {e}"})
+                              "msg": "failed to clear staging directory"})
             return
 
         tarball_url = CONFIG.MANAGER_URL.rstrip("/") + "/api/agent-tarball"
@@ -2782,16 +2784,18 @@ def agent_self_update(authorization: Optional[str] = Header(default=None)) -> St
                     if chunk:
                         f.write(chunk)
         except Exception as e:
+            logger.warning("self-update: tarball download failed: %s", e)
             yield _sse_event({"stage": "done", "ok": False,
-                              "msg": f"tarball download failed: {e}"})
+                              "msg": "tarball download failed"})
             return
 
         try:
             with tarfile.open(tarball_path, "r:gz") as tf:
                 tf.extractall(repo_dir)
         except Exception as e:
+            logger.warning("self-update: tar extract failed: %s", e)
             yield _sse_event({"stage": "done", "ok": False,
-                              "msg": f"tar extract failed: {e}"})
+                              "msg": "tar extract failed"})
             return
         try: os.remove(tarball_path)
         except OSError: pass
@@ -3144,7 +3148,7 @@ def _oc_collect_flows(flows_db: Path) -> dict[str, Any]:
         return {"total": total, "by_status": by_status, "recent": recent}
     except Exception as e:
         logger.warning("openclaw flows: %s", e)
-        return {"total": 0, "by_status": {}, "recent": [], "error": str(e)}
+        return {"total": 0, "by_status": {}, "recent": [], "error": "collection failed"}
 
 
 def _oc_collect_tasks(tasks_db: Path) -> dict[str, Any]:
@@ -3185,7 +3189,7 @@ def _oc_collect_tasks(tasks_db: Path) -> dict[str, Any]:
     except Exception as e:
         logger.warning("openclaw tasks: %s", e)
         return {"total": 0, "by_status": {}, "by_runtime": {},
-                "avg_duration_s": None, "recent_failures": [], "error": str(e)}
+                "avg_duration_s": None, "recent_failures": [], "error": "collection failed"}
 
 
 def _oc_collect_delivery(delivery_dir: Path) -> dict[str, Any]:
@@ -3225,7 +3229,7 @@ def _oc_collect_delivery(delivery_dir: Path) -> dict[str, Any]:
     except Exception as e:
         logger.warning("openclaw delivery: %s", e)
         return {"total": 0, "by_channel": {}, "total_retries": 0,
-                "common_errors": [], "oldest_enqueue_iso": None, "error": str(e)}
+                "common_errors": [], "oldest_enqueue_iso": None, "error": "collection failed"}
 
 
 @app.get("/openclaw/aggregate")

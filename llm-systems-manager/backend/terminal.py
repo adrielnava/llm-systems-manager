@@ -109,12 +109,12 @@ def _proxy_create(default_kind: str, agent_path: str = "/terminal/create"):
     if r is None:
         log.warning("terminal-create proxy → %s failed: %s tried=%s",
                     agent.get("hostname"), last_err, tried)
-        return jsonify({"ok": False, "error": last_err, "tried": tried}), 502
+        return jsonify({"ok": False, "error": "upstream agent request failed", "tried": tried}), 502
     try:
         body = r.json()
     except Exception:
-        body = {"ok": False, "error": "agent did not return JSON",
-                "raw": r.text[:200]}
+        log.warning("terminal-create: agent returned non-JSON (status %s)", r.status_code)
+        body = {"ok": False, "error": "agent did not return JSON"}
     if body.get("ok") and body.get("sid"):
         with _term_owner_lock:
             _term_owner[body["sid"]] = agent["agent_id"]
@@ -199,7 +199,9 @@ def _proxy_sid(method: str, sid: str, agent_path: str,
                     # starts.
                     if upstream is not None and not handed_off:
                         upstream.close()
-            return jsonify({"ok": False, "error": last_err or "no callback URL"}), 502
+            if last_err:
+                log.warning("terminal stream proxy failed: %s", last_err)
+            return jsonify({"ok": False, "error": "no callback URL or upstream failed"}), 502
         finally:
             if not slot_handed:
                 stream_pool.POOL.release()
@@ -209,7 +211,8 @@ def _proxy_sid(method: str, sid: str, agent_path: str,
     r, tried, err = agent_registry.agent_request(method, agent, agent_path,
                                                  headers=headers, timeout=15, **kwargs)
     if r is None:
-        return jsonify({"ok": False, "error": err, "tried": tried}), 502
+        log.warning("terminal proxy %s → agent request failed: %s (tried=%s)", agent_path, err, tried)
+        return jsonify({"ok": False, "error": "upstream agent request failed", "tried": tried}), 502
     log.info("proxy %s %s → agent:%s host=%s rc=%s sid=%s",
              method, agent_path, agent["agent_id"][:8],
              agent.get("hostname"), r.status_code, sid)

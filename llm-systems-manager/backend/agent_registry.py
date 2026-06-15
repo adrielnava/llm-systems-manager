@@ -1463,7 +1463,7 @@ def _agents_issue_cert(agent_id: str):
         bundle = _build_and_sign_agent_cert(agent)
     except Exception as e:
         log.exception("cert issuance failed for agent %s", agent_id)
-        return jsonify({"ok": False, "error": f"signing failed: {e}"}), 500
+        return jsonify({"ok": False, "error": "certificate signing failed"}), 500
     if bundle is None:
         return jsonify({"ok": False, "error": "pki module unavailable"}), 500
 
@@ -1581,7 +1581,8 @@ def _agents_collection(agent_id: str):
         timeout=5,
     )
     if r is None:
-        return jsonify({"ok": False, "error": err, "tried": tried}), 502
+        log.warning("collection toggle: agent request failed: %s (tried=%s)", err, tried)
+        return jsonify({"ok": False, "error": "upstream agent request failed", "tried": tried}), 502
     # Optimistically reflect the new state in the cached heartbeat data so
     # the admin UI flips the pause/resume button immediately. Without this
     # the button doesn't toggle until the next heartbeat (HEARTBEAT_INTERVAL_S,
@@ -1597,7 +1598,7 @@ def _agents_collection(agent_id: str):
                 agent2["last_heartbeat_data"] = hb
                 save_agents(data2)
     return jsonify({"ok": r.ok, "status_code": r.status_code, "tried": tried,
-                    "data": r.json() if r.ok else r.text[:500]})
+                    "data": r.json() if r.ok else "upstream agent returned an error"})
 
 
 def _agents_global():

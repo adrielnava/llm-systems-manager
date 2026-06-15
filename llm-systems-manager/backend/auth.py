@@ -578,8 +578,9 @@ def _admin_auth_set():
             try:
                 write_toml_auth_mode(requested_mode)
             except Exception as e:
+                log.warning("auth mode write failed: %s: %s", type(e).__name__, e)
                 return jsonify({"ok": False,
-                                "error": f"could not write config file: {e}"}), 500
+                                "error": "could not write config file"}), 500
             restart_required = True
             mode_changed = True
     if not updates and not restart_required:
