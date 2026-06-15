@@ -848,24 +848,17 @@ def register_routes(app, ctx, *,
         For index.html we also inject a <script>window.ALARM_WS_URL=...
         </script> so the live pill's WebSocket connects directly to the AE
         (manager can't proxy WS)."""
-        root = os.path.realpath(_ALARM_FRONTEND_DIR)
-        filepath = os.path.realpath(os.path.join(root, filename))
-        if filepath != root and not filepath.startswith(root + os.sep):
-            from flask import abort
-            abort(404)
         is_index = filename in ("", "index.html")
         topo = _deps.install_topology()
         # Prefer the local on-disk copy when colocated; on a split install
         # the local tree may be missing entirely so we proxy instead.
-        if not topo["split"] and os.path.isfile(filepath):
-            if is_index:
-                idx = os.path.join(root, "index.html")
-                with open(idx, "rb") as f:
-                    body = _inject_alarm_ws_url(f.read())
-                return Response(body, mimetype="text/html",
-                                headers=_csp_header_pairs("text/html"))
-            return send_from_directory(_ALARM_FRONTEND_DIR, filename)
         if not topo["split"] and os.path.isdir(_ALARM_FRONTEND_DIR):
+            if not is_index:
+                from werkzeug.exceptions import NotFound
+                try:
+                    return send_from_directory(_ALARM_FRONTEND_DIR, filename)
+                except NotFound:
+                    pass
             idx = os.path.join(_ALARM_FRONTEND_DIR, "index.html")
             with open(idx, "rb") as f:
                 body = _inject_alarm_ws_url(f.read())
