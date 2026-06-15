@@ -300,7 +300,10 @@ def register_routes(app, ctx) -> None:
         try:
             STORE.create(b.get("username") or "", auth.scrypt_hash(pw), b.get("role") or "operator")
         except ValueError as e:
-            return _bad(str(e), 409 if "exists" in str(e) else 400)
+            log.warning("user create rejected: %s", e)
+            exists = "exists" in str(e)
+            return _bad("user already exists" if exists else "invalid username or role",
+                        409 if exists else 400)
         log.warning("user %r created from %s", b.get("username"), flask_request.remote_addr)
         return jsonify({"ok": True})
 
@@ -326,7 +329,10 @@ def register_routes(app, ctx) -> None:
                     return _bad(f"password must be at least {MIN_PASSWORD} characters")
                 STORE.set_password(target, auth.scrypt_hash(b["password"]))
         except ValueError as e:
-            return _bad(str(e), 409 if "last enabled admin" in str(e) else 400)
+            log.warning("user update rejected: %s", e)
+            last_admin = "last enabled admin" in str(e)
+            return _bad("cannot modify the last enabled admin" if last_admin else "invalid role or request",
+                        409 if last_admin else 400)
         return jsonify({"ok": True})
 
     @app.route("/api/admin/users/<username>", methods=["DELETE"])
@@ -343,7 +349,8 @@ def register_routes(app, ctx) -> None:
         except KeyError:
             return _bad("no such user", 404)
         except ValueError as e:
-            return _bad(str(e), 409)
+            log.warning("user delete rejected: %s", e)
+            return _bad("cannot delete the last enabled admin", 409)
         return jsonify({"ok": True})
 
     @app.route("/api/admin/users/<username>/unlock", methods=["POST"])

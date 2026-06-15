@@ -65,7 +65,7 @@ from .storage.influxdb_client import InfluxDBClient
 # (-1, -2, …) for same-day iterations; roll the date for a new day's first
 # change.
 # ---------------------------------------------------------------------------
-__version__ = "v2026.06.15-2"
+__version__ = "v2026.06.15-3"
 from .storage import influx_monitor as _influx_monitor
 from .models.alarm_rule import (
     AlarmRuleCreate,
@@ -906,7 +906,8 @@ def _ae_extract_toml_topology(toml_bytes: bytes) -> tuple[dict, str | None]:
     try:
         cfg = tomllib.loads(toml_bytes.decode("utf-8"))
     except Exception as e:
-        return {}, str(e)
+        logger.warning("import preview: config TOML parse failed: %s: %s", type(e).__name__, e)
+        return {}, "could not parse config TOML"
     out: dict = {}
     for ovr_key, (_label, paths) in _AE_TOPOLOGY_OVERRIDES.items():
         for section, key in paths:

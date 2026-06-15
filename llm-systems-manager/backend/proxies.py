@@ -343,7 +343,7 @@ def proxy_to_primary(kind: str, method: str, path: str,
     if r is None:
         log.warning("proxy %s %s → primary %s failed: %s (tried=%s)",
                     method, path, pk, err, tried)
-        return jsonify({"ok": False, "error": err, "tried": tried}), 502
+        return jsonify({"ok": False, "error": "upstream agent request failed", "tried": tried}), 502
 
     log.info("proxy %s %s → agent:%s host=%s rc=%s (%.0fms)",
              method, path, agent["agent_id"][:8], agent.get("hostname"),
@@ -427,7 +427,9 @@ def proxy_stream_to_primary(kind: str, path: str, *, primary_kind: "str | None" 
                 # alone can't cover that window.
                 if upstream is not None and not handed_off:
                     upstream.close()
-        return jsonify({"ok": False, "error": last_err or "all callback URLs failed"}), 502
+        if last_err:
+            log.warning("proxy stream %s → all callback URLs failed: %s", path, last_err)
+        return jsonify({"ok": False, "error": "all callback URLs failed"}), 502
     finally:
         # Every non-handoff exit (all URLs failed, exception) frees the slot;
         # on a successful handoff call_on_close owns the release instead.

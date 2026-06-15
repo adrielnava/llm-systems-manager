@@ -166,8 +166,8 @@ def register_routes(app, ctx, *, profiles_path) -> None:
             m = STORE.rename(aid, model_id, (b.get("from") or "").strip(), to)
         except KeyError:
             return jsonify({"ok": False, "error": "no such profile"}), 404
-        except ValueError as e:
-            return jsonify({"ok": False, "error": str(e)}), 409
+        except ValueError:
+            return jsonify({"ok": False, "error": "name exists or empty"}), 409
         return jsonify({"ok": True, "model": m})
 
     @app.route("/api/llm/profiles/<path:model_id>/delete", methods=["POST"])
@@ -181,6 +181,6 @@ def register_routes(app, ctx, *, profiles_path) -> None:
             m = STORE.delete(aid, model_id, name)
         except KeyError:
             return jsonify({"ok": False, "error": "no such profile"}), 404
-        except ValueError as e:
-            return jsonify({"ok": False, "error": str(e)}), 409
+        except ValueError:
+            return jsonify({"ok": False, "error": "cannot delete the last profile"}), 409
         return jsonify({"ok": True, "model": m})

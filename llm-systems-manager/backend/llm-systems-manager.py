@@ -153,7 +153,7 @@ def _local_hostname() -> str:
 # banner reads it. Bump suffix (-1, -2, …) for same-day iterations; roll
 # the date for a new day's first change.
 # ---------------------------------------------------------------------------
-__version__ = "v2026.06.15-1"
+__version__ = "v2026.06.15-2"
 
 # Wall-clock at first import (Cheroot main process); the shutdown banner
 # reads it for the uptime line.
@@ -607,7 +607,7 @@ def _log_unhandled(e):
     if isinstance(e, HTTPException):
         return e
     log.exception("unhandled exception in %s %s", _flask_request.method, _flask_request.path)
-    return jsonify({"ok": False, "error": str(e)}), 500
+    return jsonify({"ok": False, "error": "internal server error"}), 500
 
 # ---------------------------------------------------------------------------
 # PTY terminal sessions — every route + helper lives in the dedicated
@@ -1688,7 +1688,7 @@ def _run_benchmark(model_ids: list, tool: str, switches: list):
                     "results": all_results})
     except Exception as e:
         log.error(f"_run_benchmark error: {e}", exc_info=True)
-        _bench_put({"type": "done", "ok": False, "error": str(e)})
+        _bench_put({"type": "done", "ok": False, "error": "benchmark failed"})
     finally:
         _bench_proc = None
         with _bench_lock:
@@ -1798,7 +1798,7 @@ def benchmark_run():
             return jsonify({"ok": False, "error": "Another benchmark is in progress"}), 409
         return jsonify({"ok": True})
     except Exception as e:
-        return jsonify({"ok": False, "error": str(e)}), 500
+        return _err_json("internal error", 500, exc=e)
 
 
 @app.route("/api/benchmark/stream")
@@ -1856,7 +1856,7 @@ def benchmark_results():
             })
         return jsonify({"results": out})
     except Exception as e:
-        return jsonify({"error": str(e)}), 500
+        return _err_json("internal error", 500, exc=e)
 
 
 @app.route("/api/benchmark/store", methods=["POST"])
@@ -1891,7 +1891,7 @@ def benchmark_store():
         conn.commit()
         return jsonify({"ok": True})
     except Exception as e:
-        return jsonify({"ok": False, "error": str(e)}), 500
+        return _err_json("internal error", 500, exc=e)
 
 
 @app.route("/api/benchmark/results/<path:model_id>", methods=["DELETE"])
@@ -1908,7 +1908,7 @@ def benchmark_delete(model_id):
         conn.commit()
         return jsonify({"ok": True})
     except Exception as e:
-        return jsonify({"ok": False, "error": str(e)}), 500
+        return _err_json("internal error", 500, exc=e)
 
 
 @app.route("/api/benchmark/models", methods=["GET"])
@@ -1919,7 +1919,7 @@ def benchmark_models():
         models = list(cp.sections())
         return jsonify({"models": models})
     except Exception as e:
-        return jsonify({"error": str(e), "models": []}), 500
+        return _err_json("internal error", 500, exc=e, models=[])
 
 
 @app.route("/api/benchmark/perf-mode", methods=["POST"])
@@ -1947,7 +1947,7 @@ def benchmark_perf_mode():
             }), 500
         return jsonify({"ok": True, "mode": mode})
     except Exception as e:
-        return jsonify({"ok": False, "error": str(e)}), 500
+        return _err_json("internal error", 500, exc=e)
 
 
 @app.route("/api/benchmark/cancel", methods=["POST"])
@@ -2002,7 +2002,7 @@ def benchmark_cancel():
         # Background thread (_run_one_model) will see EOF on stdout, call
         # proc.wait(), and emit model_done + done naturally — no duplicate event.
     except Exception as e:
-        return jsonify({"ok": False, "error": str(e)}), 500
+        return _err_json("internal error", 500, exc=e)
     return jsonify({"ok": True})
 
 
@@ -2457,7 +2457,7 @@ def receive_lmstudio_metrics():
         set_lms_active(_any_lms_busy())
         return jsonify({"ok": True})
     except Exception as e:
-        return jsonify({"ok": False, "error": str(e)}), 400
+        return _err_json("invalid request", 400, exc=e)
 
 
 @app.route("/api/lmstudio/metrics")
@@ -2553,7 +2553,7 @@ def set_layout():
         save_layout(data)
         return jsonify({"ok": True})
     except Exception as e:
-        return jsonify({"ok": False, "error": str(e)}), 400
+        return _err_json("invalid request", 400, exc=e)
 
 
 # ── Model aliases ───────────────────────────────────────────────────────────
@@ -2679,6 +2679,19 @@ def _require_admin():
         log.warning("admin route role-denied for %s", flask_request.remote_addr)
         return jsonify({"ok": False, "error": "admin role required", "role_denied": True}), 403
     return None
+
+
+def _err_json(message, status, *, exc=None, detail=None, **extra):
+    """Generic error response that never leaks exception/traceback text to the
+    client; logs the detail (request path + exception/detail) server-side."""
+    if exc is not None:
+        log.warning("%s [%s]: %s: %s", flask_request.path, message,
+                    type(exc).__name__, exc)
+    elif detail is not None:
+        log.warning("%s [%s]: %s", flask_request.path, message, detail)
+    else:
+        log.warning("%s: %s", flask_request.path, message)
+    return jsonify({"ok": False, "error": message, **extra}), status
 
 
 import agent_registry  # type: ignore[import-not-found]  # sibling module; script dir is on sys.path
@@ -2811,7 +2824,8 @@ def _sudo_allows(unit_cmd: list) -> "tuple[bool, str]":
         return False, ("not permitted by sudoers — run install-manager.sh to install "
                        "the restart grant (/etc/sudoers.d/llm-systems-manager)")
     except Exception as e:
-        return False, f"sudo pre-flight failed: {type(e).__name__}: {e}"
+        log.warning("sudo pre-flight failed: %s: %s", type(e).__name__, e)
+        return False, "sudo pre-flight failed"
 
 
 @app.route("/api/admin/service/<svc>/restart", methods=["POST"])
@@ -2863,7 +2877,7 @@ def admin_service_restart(svc: str):
         return jsonify({"ok": False, "error": err}), 500
     except Exception as e:
         logging.exception("alarm engine restart failed")
-        return jsonify({"ok": False, "error": f"{type(e).__name__}: {e}"}), 500
+        return _err_json("alarm engine restart failed", 500, exc=e)
 
 
 @app.route("/api/admin/system-health", methods=["GET"])
@@ -2946,11 +2960,12 @@ def admin_system_health():
         except Exception as e:
             _ae_health_state["consecutive_failures"] += 1
             sustained = _ae_health_state["consecutive_failures"] >= 2
+            log.warning("system-health: alarm engine probe failed: %s: %s", type(e).__name__, e)
             health["services"].append({
                 "name": "alarm_engine",
                 "ok": not sustained,
                 "url": ae_url,
-                "error": f"{type(e).__name__}: {e}" if sustained else "slow probe (transient)",
+                "error": type(e).__name__ if sustained else "slow probe (transient)",
             })
             health["services"].append({
                 "name": "influxdb",
@@ -3363,9 +3378,12 @@ def admin_llama_models():
             timeout=5,
         )
         if resp is None or not resp.ok:
+            if err:
+                log.warning("model-list fan-out: agent %s request failed: %s",
+                            agent.get("hostname"), err)
             errors.append({
                 "agent": agent.get("hostname"),
-                "error": str(err or (resp.status_code if resp else "no-response")),
+                "error": (resp.status_code if resp else "no-response"),
             })
             continue
         try:
@@ -3530,7 +3548,8 @@ def _extract_toml_topology(toml_bytes: bytes) -> tuple[dict[str, Any], str | Non
     try:
         cfg = tomllib.loads(toml_bytes.decode("utf-8"))
     except Exception as e:
-        return {}, str(e)
+        log.warning("import preview: config TOML parse failed: %s: %s", type(e).__name__, e)
+        return {}, "could not parse config TOML"
     out: dict[str, Any] = {}
     for ovr_key, (_label, paths) in _TOPOLOGY_OVERRIDES.items():
         for section, key in paths:
@@ -3670,7 +3689,7 @@ def admin_export_manager():
         tgz = _archive.pack_tar(files)
         blob = _archive.encrypt(tgz, password if password else None)
     except ValueError as e:
-        return jsonify({"ok": False, "error": str(e)}), 400
+        return _err_json("invalid request", 400, exc=e)
     fname = f"lsm-manager-{socket.gethostname()}-{datetime.now().strftime('%Y%m%d-%H%M%S')}.lsmenc"
     log.warning("manager export by %s (%d files, %d bytes, encrypted=%s)",
                 flask_request.remote_addr, len(files), len(blob), bool(password))
@@ -3720,11 +3739,11 @@ def admin_import_manager_preview():
     try:
         payload = _archive.decrypt(blob, password)
     except ValueError as e:
-        return jsonify({"ok": False, "error": str(e), "encrypted": enc}), 400
+        return _err_json("invalid request", 400, exc=e, encrypted=enc)
     try:
         files = _archive.unpack_tar(payload)
     except Exception as e:
-        return jsonify({"ok": False, "error": f"tar extraction failed: {e}"}), 400
+        return _err_json("tar extraction failed", 400, exc=e)
     manifest = _parse_manifest(files)
     if manifest.get("component") and manifest["component"] != "manager":
         return jsonify({"ok": False,
@@ -3786,7 +3805,7 @@ def admin_import_manager_apply():
         payload = _archive.decrypt(blob, password)
         files = _archive.unpack_tar(payload)
     except ValueError as e:
-        return jsonify({"ok": False, "error": str(e)}), 400
+        return _err_json("invalid request", 400, exc=e)
     manifest = _parse_manifest(files)
     if manifest.get("component") and manifest["component"] != "manager":
         return jsonify({"ok": False,
@@ -3803,7 +3822,7 @@ def admin_import_manager_apply():
                not all(isinstance(c, str) for c in categories):
                 raise ValueError("categories must be a JSON array of strings")
         except Exception as e:
-            return jsonify({"ok": False, "error": f"bad categories: {e}"}), 400
+            return _err_json("bad categories", 400, exc=e)
     else:
         categories = list(_DEFAULT_IMPORT_CATEGORIES)
     unknown = [c for c in categories if c not in _MANAGER_EXPORT_CATEGORIES]
@@ -3832,7 +3851,7 @@ def admin_import_manager_apply():
         if not isinstance(overrides, dict):
             raise ValueError("topology_overrides must be a JSON object")
     except Exception as e:
-        return jsonify({"ok": False, "error": f"bad topology_overrides: {e}"}), 400
+        return _err_json("bad topology_overrides", 400, exc=e)
     patched_keys: list[str] = []
     if overrides and files.get("config/llm-systems.toml"):
         try:
@@ -3840,12 +3859,12 @@ def admin_import_manager_apply():
             new_text, patched_keys = _patch_toml_lines(old_text, overrides)
             files["config/llm-systems.toml"] = new_text.encode("utf-8")
         except Exception as e:
-            return jsonify({"ok": False, "error": f"TOML patch failed: {e}"}), 400
+            return _err_json("TOML patch failed", 400, exc=e)
     try:
         result = _import_apply_manager(files)
     except Exception as e:
         log.exception("manager import failed")
-        return jsonify({"ok": False, "error": str(e)}), 500
+        return _err_json("internal error", 500, exc=e)
     log.warning("manager import applied by %s: categories=%s, %d files written, "
                 "%d skipped (filtered out), backups=%s, patched=%s",
                 flask_request.remote_addr, ",".join(categories),
@@ -3873,12 +3892,12 @@ def agents_status_check(agent_id: str):
     r, tried, err = agent_registry.agent_request("GET", agent, "/identify", timeout=5)
     dur_ms = (time.perf_counter() - t0) * 1000
     if r is None:
-        return jsonify({"ok": False, "error": err, "tried": tried,
-                        "latency_ms": round(dur_ms, 1)}), 502
+        return _err_json("upstream agent request failed", 502, detail=err,
+                         tried=tried, latency_ms=round(dur_ms, 1))
     return jsonify({"ok": r.ok, "status_code": r.status_code,
                     "latency_ms": round(dur_ms, 1),
                     "tried": tried,
-                    "data": r.json() if r.ok else r.text[:500]})
+                    "data": r.json() if r.ok else "upstream agent returned an error"})
 
 
 @app.route("/api/agents/<agent_id>/restart", methods=["POST"])
@@ -3896,9 +3915,9 @@ def agents_restart(agent_id: str):
         timeout=5,
     )
     if r is None:
-        return jsonify({"ok": False, "error": err, "tried": tried}), 502
+        return _err_json("upstream agent request failed", 502, detail=err, tried=tried)
     return jsonify({"ok": r.ok, "status_code": r.status_code, "tried": tried,
-                    "data": r.json() if r.ok else r.text[:500]})
+                    "data": r.json() if r.ok else "upstream agent returned an error"})
 
 
 @app.route("/api/agents/<agent_id>/config-file", methods=["GET", "PUT"])
@@ -3928,11 +3947,12 @@ def agents_config_file(agent_id: str):
             json=body, timeout=15,
         )
     if r is None:
-        return jsonify({"ok": False, "error": err, "tried": tried}), 502
+        return _err_json("upstream agent request failed", 502, detail=err, tried=tried)
     try:
         payload = r.json()
     except Exception:
-        payload = {"ok": r.ok, "raw": r.text[:1000]}
+        log.warning("agent config-file PUT: non-JSON upstream response (status %s)", r.status_code)
+        payload = {"ok": r.ok, "raw": "upstream returned a non-JSON body"}
     return jsonify(payload), r.status_code
 
 
@@ -3952,8 +3972,8 @@ def agents_log_tail(agent_id: str):
         timeout=10,
     )
     if r is None:
-        return jsonify({"ok": False, "error": err, "tried": tried}), 502
-    return jsonify(r.json() if r.ok else {"ok": False, "error": r.text[:500]}), r.status_code
+        return _err_json("upstream agent request failed", 502, detail=err, tried=tried)
+    return jsonify(r.json() if r.ok else {"ok": False, "error": "upstream agent error"}), r.status_code
 
 
 @app.route("/api/agents/<agent_id>/log/stream", methods=["GET"])
@@ -4003,7 +4023,7 @@ def agents_log_stream(agent_id: str):
             except Exception as e:
                 last_err = f"{full}: {type(e).__name__}: {e}"
                 continue
-        return jsonify({"ok": False, "error": last_err or "all callback URLs failed"}), 502
+        return _err_json("all callback URLs failed", 502, detail=last_err)
     finally:
         if not slot_handed:
             stream_pool.POOL.release()
@@ -4114,7 +4134,7 @@ def agents_self_update(agent_id: str):
             except Exception as e:
                 last_err = f"{full}: {type(e).__name__}: {e}"
                 continue
-        return jsonify({"ok": False, "error": last_err or "all callback URLs failed"}), 502
+        return _err_json("all callback URLs failed", 502, detail=last_err)
     finally:
         if not slot_handed:
             stream_pool.POOL.release()
