@@ -950,7 +950,7 @@ const RuleManager = {
     _formatThreshold(rule) {
         const cfg = rule.config || {};
         const t = cfg.threshold || {};
-        const unit = t.unit ? ` ${t.unit}` : '';
+        const unit = t.unit ? ` ${escapeHtml(t.unit)}` : '';
         if (rule.rule_type === 'threshold_above') {
             const v = t.upper ?? t.value;
             return v != null ? `&gt; ${v}${unit}` : '—';
@@ -1515,7 +1515,7 @@ const ModalManager = {
                 <label>Device</label>
                 <select id="form-source_host">
                     <option value="">Any device</option>
-                    ${liveHosts.map(h => `<option value="${h}">${h}</option>`).join('')}
+                    ${liveHosts.map(h => `<option value="${escapeHtml(h)}">${escapeHtml(h)}</option>`).join('')}
                 </select>
             </div>
             <div class="form-group">
@@ -1671,7 +1671,7 @@ const ModalManager = {
             const fallback = ['cpu', 'gpu', 'ram', 'disk', 'net', 'psu', 'llama'];
             const list = uniqueSources.length > 0 ? uniqueSources : fallback;
             srcSel.innerHTML = '<option value="">Select source…</option>' +
-                list.map(s => `<option value="${s}">${s}</option>`).join('');
+                list.map(s => `<option value="${escapeHtml(s)}">${escapeHtml(s)}</option>`).join('');
             if (preselect) srcSel.value = preselect;
         };
 
@@ -1689,7 +1689,7 @@ const ModalManager = {
             if (unique.length > 0) {
                 metSel.innerHTML = '<option value="">Select metric…</option>' +
                     unique.map(m =>
-                        `<option value="${m.metric_name}">${m.metric_name}${m.unit ? ' (' + m.unit + ')' : ''}</option>`
+                        `<option value="${escapeHtml(m.metric_name)}">${escapeHtml(m.metric_name)}${m.unit ? ' (' + escapeHtml(m.unit) + ')' : ''}</option>`
                     ).join('');
             } else {
                 metSel.innerHTML = '<option value="">No metrics for this source</option>';
@@ -2010,7 +2010,7 @@ const ModalManager = {
     _renderMultiSelect(id, options, hint) {
         // <select multiple> + a small "selected count" indicator. Ctrl/Cmd-
         // click toggles individual options.
-        const opts = options.map(v => `<option value="${v}">${v}</option>`).join('');
+        const opts = options.map(v => `<option value="${escapeHtml(v)}">${escapeHtml(v)}</option>`).join('');
         return `
             <div class="form-group">
                 <label for="${id}">${hint}</label>
@@ -2028,9 +2028,9 @@ const ModalManager = {
         const channelList = channels.length
             ? channels.map(ch => `
                 <div class="checkbox-item">
-                    <input id="form-cfg-ch-${ch.channel_id}" type="checkbox" value="${ch.channel_id}"
-                           data-channel-type="${ch.channel_type}">
-                    <label for="form-cfg-ch-${ch.channel_id}">${ch.name} <span class="badge">${ch.channel_type}</span></label>
+                    <input id="form-cfg-ch-${escapeHtml(ch.channel_id)}" type="checkbox" value="${escapeHtml(ch.channel_id)}"
+                           data-channel-type="${escapeHtml(ch.channel_type)}">
+                    <label for="form-cfg-ch-${escapeHtml(ch.channel_id)}">${escapeHtml(ch.name)} <span class="badge">${escapeHtml(ch.channel_type)}</span></label>
                 </div>`).join('')
             : '<p class="hint">No channels configured yet. Add a channel first.</p>';
         return `
@@ -2869,7 +2869,7 @@ const ChartManager = {
 
         if (typeof Chart === 'undefined') {
             canvas.parentElement.innerHTML = `<div class="empty-state" style="padding:20px">
-                <p>${label}: <strong>${m?.latest_value !== undefined ? Number(m.latest_value).toFixed(2) + ' ' + unit : '—'}</strong></p>
+                <p>${escapeHtml(label)}: <strong>${m?.latest_value !== undefined ? Number(m.latest_value).toFixed(2) + ' ' + escapeHtml(unit) : '—'}</strong></p>
                 <p style="color:#64748b;font-size:0.85em">Chart.js unavailable — chart cannot render</p>
             </div>`;
             return;
