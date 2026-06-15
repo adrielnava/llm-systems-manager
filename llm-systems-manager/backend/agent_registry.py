@@ -417,7 +417,8 @@ def agent_request(method: str, agent: dict, path: str, **kwargs
             resp = requests.request(method, full, **call_kwargs)
             return resp, tried, None
         except Exception as e:
-            last_err = f"{full}: {type(e).__name__}: {e}"
+            log.warning("agent_request %s %s failed: %s: %s", method, full, type(e).__name__, e)
+            last_err = f"{full}: request failed"
             continue
     return None, tried, last_err
 
