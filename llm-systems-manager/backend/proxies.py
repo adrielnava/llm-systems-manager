@@ -101,6 +101,15 @@ _STREAM_KEEPALIVE_S = float(getattr(settings.manager, "stream_keepalive_s", 8.0)
 _STREAM_MAX_LIFETIME_S = float(getattr(settings.manager, "stream_max_lifetime_s", 120.0) or 120.0)
 
 
+def _proxy_error(message: str, status: int, detail: object = None) -> Response:
+    # text/plain + generic message: never reflect request method / exception
+    # into the body (logged server-side instead).
+    if detail is not None:
+        log.warning("%s: %s", message, detail)
+    return Response(message, status=status,
+                    content_type="text/plain; charset=utf-8")
+
+
 def thread_pumped(upstream, path, *, keepalive_s: float = _STREAM_KEEPALIVE_S,
                   max_lifetime_s: float = _STREAM_MAX_LIFETIME_S):
     """Relay a requests stream as an SSE generator that writes on the manager's
@@ -451,7 +460,7 @@ def _proxy_llmchat(path: str, base: str):
                         status=upstream.status_code,
                         headers=headers)
     except Exception as e:
-        return Response(f"Proxy error: {e}", status=502)
+        return _proxy_error("Proxy error", 502, e)
 
 
 def _build_openclaw_ws_patch(netloc: str, port: str) -> str:
@@ -519,7 +528,7 @@ def _proxy_openclaw(path: str, base: str):
                         status=upstream.status_code,
                         headers=headers)
     except Exception as e:
-        return Response(f"Proxy error: {e}", status=502)
+        return _proxy_error("Proxy error", 502, e)
 
 
 def _proxy_imggen(path: str, base: str):
@@ -554,7 +563,7 @@ def _proxy_imggen(path: str, base: str):
         return Response(upstream.iter_content(chunk_size=8192),
                         status=upstream.status_code, headers=headers)
     except Exception as e:
-        return Response(f"Image Generation proxy error: {e}", status=502)
+        return _proxy_error("Image Generation proxy error", 502, e)
 
 
 def _proxy_sdcpp(path: str, base: str):
@@ -586,7 +595,7 @@ def _proxy_sdcpp(path: str, base: str):
                                   data=flask_request.get_data(),
                                   timeout=120, stream=True)
     else:
-        return Response(f"Method {method} not supported for /sdcpp proxy", 405)
+        return _proxy_error("Method not supported for /sdcpp proxy", 405, method)
 
     resp_headers = {}
     for k, v in upstream.headers.items():
@@ -654,7 +663,7 @@ def _proxy_alarm_engine(path: str):
         return Response(upstream.iter_content(chunk_size=8192),
                         status=upstream.status_code, headers=headers)
     except Exception as e:
-        return Response(f"Alarm engine proxy error: {e}", status=502)
+        return _proxy_error("Alarm engine proxy error", 502, e)
 
 
 # ── AE WebSocket URL builder + AE-frontend injection ─────────────────
@@ -851,7 +860,7 @@ def register_routes(app, ctx, *,
                 stream=not is_index,   # buffer index so we can inject the WS URL
             )
         except Exception as e:
-            return Response(f"alarm engine frontend proxy error: {e}", status=502)
+            return _proxy_error("alarm engine frontend proxy error", 502, e)
         excluded = {"content-security-policy", "x-frame-options",
                     "transfer-encoding", "content-encoding", "content-length",
                     "connection"}
