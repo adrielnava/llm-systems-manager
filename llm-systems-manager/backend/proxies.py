@@ -684,6 +684,10 @@ def _proxy_alarm_engine(path: str):
 
 # ── AE WebSocket URL builder + AE-frontend injection ─────────────────
 
+# Hostnames skipped during AE-URL DNS resolution (already browser-routable).
+_WS_HOST_RESOLVE_SKIP = {"localhost"}
+
+
 def ae_ws_url_for_browser() -> str:
     """Translate the alarm-engine URL into a WebSocket URL the BROWSER
     can dial directly (Flask/Werkzeug can't proxy WS frames). Loopback
@@ -725,7 +729,7 @@ def ae_ws_url_for_browser() -> str:
     ws_scheme = "wss" if parts.scheme == "https" else "ws"
     # Only resolve when the host *looks* like a name (contains a letter).
     # Skips pure IPv4 / bracketed IPv6 literals which are already routable.
-    if ae_host and any(c.isalpha() for c in ae_host) and ae_host not in ("localhost",):
+    if ae_host and any(c.isalpha() for c in ae_host) and ae_host not in _WS_HOST_RESOLVE_SKIP:
         try:
             ae_host = socket.gethostbyname(ae_host)
         except (socket.gaierror, OSError) as e:
