@@ -376,6 +376,11 @@ class MetricCache:
         with self._lock:
             return list(self._metric_points.keys())
 
+    @property
+    def metric_ttl_seconds(self) -> int:
+        """Configured metric retention TTL in seconds."""
+        return self._metric_ttl
+
     def get_all_prefixed(self, prefix: str) -> list[Any]:
         """Return all non-expired values whose key starts with *prefix*."""
         with self._lock:

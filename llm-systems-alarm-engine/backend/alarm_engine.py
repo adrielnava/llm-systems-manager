@@ -65,7 +65,7 @@ from .storage.influxdb_client import InfluxDBClient
 # (-1, -2, …) for same-day iterations; roll the date for a new day's first
 # change.
 # ---------------------------------------------------------------------------
-__version__ = "v2026.06.15-6"
+__version__ = "v2026.06.15-7"
 from .storage import influx_monitor as _influx_monitor
 from .models.alarm_rule import (
     AlarmRuleCreate,
@@ -363,7 +363,7 @@ async def _on_startup() -> None:
         try:
             from datetime import datetime as _dt_w, timezone as _tz_w
             from .models.metrics import MetricPoint as _MetricPoint_w
-            warm_minutes = max(1, int(getattr(cache, "_metric_ttl", 3600) / 60))
+            warm_minutes = max(1, int(cache.metric_ttl_seconds / 60))
             t0 = time.perf_counter()
             entries = db_client.warm_metric_history(minutes=warm_minutes)
             staged: list = []
@@ -938,6 +938,8 @@ def _ae_patch_toml_lines(toml_text: str, overrides: dict) -> tuple[str, list[str
     if not targets:
         return toml_text, []
     import re
+    # Splits `key = value` lines into named groups indent/key/sp/val/tail.
+    # e.g. `  port = 8081  # c` → key=port, val=8081, tail="  # c".
     line_re = re.compile(
         r'^(?P<indent>\s*)(?P<key>[A-Za-z_][A-Za-z0-9_-]*)(?P<sp>\s*=\s*)'
         r'(?P<val>"(?:[^"\\]|\\.)*"|\'(?:[^\'\\]|\\.)*\'|[^\s#]+)'
@@ -1120,13 +1122,13 @@ async def ae_admin_export(body: dict = Body(default_factory=dict)):
     except ModuleNotFoundError as e:
         # The cryptography package only landed in requirements.txt
         # alongside this feature; older AE venvs need a pip install.
+        pip_path = Path(sys.executable).with_name("pip")
+        req_path = Path(__file__).resolve().parents[1] / "requirements.txt"
         raise HTTPException(
             status_code=503,
             detail=(f"backend dependency missing ({e.name}). Refresh the "
-                    f"alarm engine venv: sudo -u llmsys "
-                    f"/opt/llm-systems-manager/llm-systems-alarm-engine/venv/bin/pip "
-                    f"install -r /opt/llm-systems-manager/llm-systems-alarm-engine/"
-                    f"requirements.txt  &&  sudo systemctl restart "
+                    f"alarm engine venv: sudo -u llmsys {pip_path} "
+                    f"install -r {req_path}  &&  sudo systemctl restart "
                     f"llm-systems-alarm-engine"))
     import socket as _s
     fname = (f"lsm-ae-{_s.gethostname()}-"

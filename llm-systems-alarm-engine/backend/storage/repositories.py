@@ -1127,7 +1127,7 @@ class MetricRepository:
         historical queries (24h, 7d, 30d) directly from persistent storage.
         """
         now = datetime.now(timezone.utc)
-        cache_ttl_seconds = getattr(self.cache, "_metric_ttl", 3600)
+        cache_ttl_seconds = self.cache.metric_ttl_seconds
 
         if since is None:
             window_seconds = cache_ttl_seconds
