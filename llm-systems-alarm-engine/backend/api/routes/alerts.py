@@ -123,7 +123,8 @@ async def export_alerts(
     first compatible route, and a path like /export would otherwise be
     interpreted as alert_id="export" and 404 with "Alert export not found".
     """
-    import csv, io
+    import csv
+    import io
     from fastapi.responses import Response
     if format != "csv":
         raise HTTPException(status_code=400, detail=f"Unsupported format: {format}")

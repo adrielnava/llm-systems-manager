@@ -12,6 +12,10 @@ import sse_daemon
 SECRET = b"x" * 32
 PATH = "/sse/llama-state"
 
+# Disconnect-cleanup poll: 50 × 0.02 s = up to 1 s for the handler to release.
+CLEANUP_POLL_ATTEMPTS = 50
+CLEANUP_POLL_INTERVAL_S = 0.02
+
 
 def _mint(agent_id, path=PATH, ttl=300, secret=SECRET):
     expiry = int(time.time()) + ttl
@@ -76,10 +80,10 @@ async def test_stream_initial_broadcast_and_disconnect_cleanup():
         assert '"state": "awake"' in nxt
         resp.close()  # client disconnect
     # after disconnect the handler's finally must release the subscription
-    for _ in range(50):
+    for _ in range(CLEANUP_POLL_ATTEMPTS):
         if sse_daemon.active_count() == 0:
             break
-        await asyncio.sleep(0.02)
+        await asyncio.sleep(CLEANUP_POLL_INTERVAL_S)
     assert sse_daemon.active_count() == 0
 
 
