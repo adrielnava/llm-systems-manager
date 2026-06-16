@@ -101,10 +101,7 @@ class RuleRepository:
     def _iter_cached_rules(self) -> list[AlarmRule]:
         """Return all AlarmRule objects currently in the cache."""
         rules: list[AlarmRule] = []
-        for key in list(self.cache._cache.keys()):
-            if not key.startswith("rule:"):
-                continue
-            data = self.cache.get(key)
+        for data in self.cache.get_all_prefixed("rule:"):
             if not isinstance(data, dict):
                 continue
             try:
@@ -273,6 +270,9 @@ class RuleRepository:
             except (ValueError, TypeError):
                 return None
 
+        cycles_raw = data.get("auto_resolve_cycles")
+        auto_resolve_cycles = int(cycles_raw) if cycles_raw is not None else DEFAULT_AUTO_RESOLVE_CYCLES
+
         rule_id_raw = data["rule_id"]
         return AlarmRule(
             rule_id=_as_uuid(rule_id_raw),
@@ -288,7 +288,7 @@ class RuleRepository:
             notification_channel_ids=[_as_uuid(i) for i in ncids_raw],
             quiet_hours_start=data.get("quiet_hours_start"),
             quiet_hours_end=data.get("quiet_hours_end"),
-            auto_resolve_cycles=(int(data["auto_resolve_cycles"]) if data.get("auto_resolve_cycles") is not None else DEFAULT_AUTO_RESOLVE_CYCLES),
+            auto_resolve_cycles=auto_resolve_cycles,
             created_at=_parse_dt(data.get("created_at")) or now_utc(),
             updated_at=_parse_dt(data.get("updated_at")) or now_utc(),
             last_evaluated_at=_parse_dt(data.get("last_evaluated_at")),
@@ -313,9 +313,7 @@ class AlertRepository:
         self.alarms_db = alarms_db
         self._active_cache: Optional[list[Alert]] = None
         self._active_cache_ts: float = 0.0
-        self._active_cache_ttl: float = float(getattr(
-            settings.alarm_engine.caches, "alert_repo_ttl_s",
-            settings.alarm_engine.caches.rule_repo_ttl_s))
+        self._active_cache_ttl: float = float(settings.alarm_engine.caches.alert_repo_ttl_s)
 
     def _invalidate_active_cache(self) -> None:
         self._active_cache = None
