@@ -262,6 +262,7 @@ class AlarmEngineCaches(BaseModel):
     size: int = 100_000
     ttl_s: int = 900
     rule_repo_ttl_s: int = 300
+    alert_repo_ttl_s: int = 300
     metric_catalog_warmup_days: int = 7
     websocket_queue_size: int = 500
 

@@ -236,6 +236,7 @@ otlp_heartbeat_s           = 60                          # OTLP receiver heartbe
 size                          = 100000                   # max entries in the in-memory cache
 ttl_s                         = 900                      # default cache entry TTL
 rule_repo_ttl_s               = 300                      # rule list memoization (5 min)
+alert_repo_ttl_s              = 300                      # active-alert list memoization (5 min)
 metric_catalog_warmup_days    = 7                        # how far back to scan at boot for the metric dropdown
 websocket_queue_size          = 500                      # WS out-queue depth
 
