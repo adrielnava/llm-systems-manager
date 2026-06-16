@@ -153,7 +153,7 @@ def _local_hostname() -> str:
 # banner reads it. Bump suffix (-1, -2, …) for same-day iterations; roll
 # the date for a new day's first change.
 # ---------------------------------------------------------------------------
-__version__ = "v2026.06.15-11"
+__version__ = "v2026.06.15-12"
 
 # Wall-clock at first import (Cheroot main process); the shutdown banner
 # reads it for the uptime line.
@@ -3552,6 +3552,8 @@ def _patch_toml_lines(toml_text: str,
             targets[(section, key)] = value
     if not targets:
         return toml_text, []
+    # Splits `key = value` lines into named groups indent/key/sp/val/tail.
+    # e.g. `  port = 8081  # c` → key=port, val=8081, tail="  # c".
     line_re = re.compile(
         r'^(?P<indent>\s*)(?P<key>[A-Za-z_][A-Za-z0-9_-]*)(?P<sp>\s*=\s*)'
         r'(?P<val>"(?:[^"\\]|\\.)*"|\'(?:[^\'\\]|\\.)*\'|[^\s#]+)'
