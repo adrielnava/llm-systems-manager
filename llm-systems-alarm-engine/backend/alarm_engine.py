@@ -65,7 +65,7 @@ from .storage.influxdb_client import InfluxDBClient
 # (-1, -2, …) for same-day iterations; roll the date for a new day's first
 # change.
 # ---------------------------------------------------------------------------
-__version__ = "v2026.06.15-10"
+__version__ = "v2026.06.15-11"
 from .storage import influx_monitor as _influx_monitor
 from .models.alarm_rule import (
     AlarmRuleCreate,
@@ -226,7 +226,7 @@ def _seed_default_rules(repo: RuleRepository) -> None:
     try:
         existing = repo.get_all(raise_on_error=True)
     except Exception as e:
-        logger.warning(f"Skipping default-rule seed; InfluxDB query failed: {e}")
+        logger.warning(f"Skipping default-rule seed; rule query failed: {e}")
         return
     existing_names = {r.name for r in existing}
     to_seed = [s for s in _DEFAULT_RULES if s["name"] not in existing_names]
@@ -384,7 +384,8 @@ async def _on_startup() -> None:
                         timestamp=ts,
                         hostname=e.get("hostname"),
                     ))
-                except Exception:
+                except Exception as exc:
+                    logger.debug(f"Metric history warm-up skip {src}/{mname}: {exc}")
                     continue
             # Single bulk insertion under one lock acquisition — cheaper
             # than ~16K individual add_metric_point() calls at startup.

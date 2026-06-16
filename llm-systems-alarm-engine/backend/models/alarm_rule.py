@@ -8,6 +8,9 @@ from uuid import UUID, uuid4
 
 from pydantic import BaseModel, Field
 
+# Consecutive sub-threshold eval cycles before an alert auto-resolves.
+DEFAULT_AUTO_RESOLVE_CYCLES = 2
+
 
 class RuleType(str, Enum):
     """Types of alarm rules."""
@@ -95,7 +98,7 @@ class AlarmRuleCreate(BaseModel):
     quiet_hours_start: Optional[str] = Field(default=None, description="Quiet hours start (HH:MM)")
     quiet_hours_end: Optional[str] = Field(default=None, description="Quiet hours end (HH:MM)")
     auto_resolve_cycles: int = Field(
-        default=2,
+        default=DEFAULT_AUTO_RESOLVE_CYCLES,
         ge=0,
         description="Close active alerts once metric stays below threshold for this many "
                     "consecutive eval cycles (0 = never auto-resolve, manual close only)",
@@ -157,7 +160,7 @@ class AlarmRule(BaseModel):
     notification_channel_ids: list[UUID]
     quiet_hours_start: Optional[str]
     quiet_hours_end: Optional[str]
-    auto_resolve_cycles: int = 2
+    auto_resolve_cycles: int = DEFAULT_AUTO_RESOLVE_CYCLES
     created_at: datetime
     updated_at: datetime
     last_evaluated_at: Optional[datetime]

@@ -9,7 +9,7 @@ from .._best_effort import best_effort
 from .._time import now_utc
 from typing import Any, Optional
 
-from ..models.alarm_rule import AlarmRule, AlarmRuleCreate, AlarmRuleUpdate
+from ..models.alarm_rule import AlarmRule, AlarmRuleCreate, AlarmRuleUpdate, DEFAULT_AUTO_RESOLVE_CYCLES
 from ..models.alert import Alert, AlertCreate, AlertFilter, AlertStatus, AlertUpdate
 from ..models.metrics import MetricPoint, MetricSummary
 from ..models.notification import (
@@ -29,6 +29,11 @@ from .influxdb_client import InfluxDBClient
 from config.unified_config import settings
 
 logger = logging.getLogger(__name__)
+
+
+def _as_uuid(v):
+    """Coerce a stringified UUID to a UUID; pass UUID/None/empty through unchanged."""
+    return uuid.UUID(v) if isinstance(v, str) and v else v
 
 
 class ConfigDeserializationError(Exception):
@@ -270,7 +275,7 @@ class RuleRepository:
 
         rule_id_raw = data["rule_id"]
         return AlarmRule(
-            rule_id=uuid.UUID(rule_id_raw) if isinstance(rule_id_raw, str) else rule_id_raw,
+            rule_id=_as_uuid(rule_id_raw),
             name=data["name"],
             description=data.get("description"),
             source_host=data.get("source_host") or None,
@@ -280,10 +285,10 @@ class RuleRepository:
             config=rs_config,
             severity=data["severity"],
             enabled=data.get("enabled", True),
-            notification_channel_ids=[uuid.UUID(i) if isinstance(i, str) else i for i in ncids_raw],
+            notification_channel_ids=[_as_uuid(i) for i in ncids_raw],
             quiet_hours_start=data.get("quiet_hours_start"),
             quiet_hours_end=data.get("quiet_hours_end"),
-            auto_resolve_cycles=(int(data["auto_resolve_cycles"]) if data.get("auto_resolve_cycles") is not None else 2),
+            auto_resolve_cycles=(int(data["auto_resolve_cycles"]) if data.get("auto_resolve_cycles") is not None else DEFAULT_AUTO_RESOLVE_CYCLES),
             created_at=_parse_dt(data.get("created_at")) or now_utc(),
             updated_at=_parse_dt(data.get("updated_at")) or now_utc(),
             last_evaluated_at=_parse_dt(data.get("last_evaluated_at")),
@@ -308,7 +313,9 @@ class AlertRepository:
         self.alarms_db = alarms_db
         self._active_cache: Optional[list[Alert]] = None
         self._active_cache_ts: float = 0.0
-        self._active_cache_ttl: float = float(settings.alarm_engine.caches.rule_repo_ttl_s)
+        self._active_cache_ttl: float = float(getattr(
+            settings.alarm_engine.caches, "alert_repo_ttl_s",
+            settings.alarm_engine.caches.rule_repo_ttl_s))
 
     def _invalidate_active_cache(self) -> None:
         self._active_cache = None
@@ -536,8 +543,8 @@ class AlertRepository:
                 return None
 
         return Alert(
-            alert_id=uuid.UUID(data["alert_id"]) if isinstance(data["alert_id"], str) else data["alert_id"],
-            rule_id=uuid.UUID(data["rule_id"]) if data.get("rule_id") and isinstance(data["rule_id"], str) else data.get("rule_id"),
+            alert_id=_as_uuid(data["alert_id"]),
+            rule_id=_as_uuid(data.get("rule_id")),
             rule_name=data.get("rule_name"),
             metric_source=data["metric_source"],
             metric_name=data["metric_name"],
@@ -546,7 +553,7 @@ class AlertRepository:
             severity=data["severity"],
             status=AlertStatus(data["status"]) if not isinstance(data["status"], AlertStatus) else data["status"],
             message=data.get("message", ""),
-            notification_channel_ids=[uuid.UUID(i) if isinstance(i, str) else i for i in ncids],
+            notification_channel_ids=[_as_uuid(i) for i in ncids],
             created_at=_parse_dt(data.get("created_at")) or now_utc(),
             last_evaluated_at=_parse_dt(data.get("last_evaluated_at")),
             trigger_count=int(data.get("trigger_count") or 1),
@@ -625,7 +632,7 @@ class NotificationRepository:
                 channels_raw = json.loads(channels_raw)
             except (ValueError, TypeError):
                 channels_raw = []
-        channels = [uuid.UUID(c) if isinstance(c, str) else c for c in channels_raw]
+        channels = [_as_uuid(c) for c in channels_raw]
 
         def _parse_dt(v: Any) -> Optional[datetime]:
             if v is None:
@@ -661,7 +668,7 @@ class NotificationRepository:
             min_sev = None
 
         return NotificationConfig(
-            config_id=uuid.UUID(cfg_id_raw) if isinstance(cfg_id_raw, str) else cfg_id_raw,
+            config_id=_as_uuid(cfg_id_raw),
             name=item["name"],
             description=item.get("description"),
             channels=channels,
@@ -1069,13 +1076,13 @@ class NotificationRepository:
 
         ch_id_raw = data["channel_id"]
         return NotificationChannel(
-            channel_id=uuid.UUID(ch_id_raw) if isinstance(ch_id_raw, str) else ch_id_raw,
+            channel_id=_as_uuid(ch_id_raw),
             name=data["name"],
             description=data.get("description"),
             channel_type=channel_type,
             config=channel_config,
             enabled=data.get("enabled", True),
-            rule_ids=[uuid.UUID(i) if isinstance(i, str) else i for i in rule_ids_raw],
+            rule_ids=[_as_uuid(i) for i in rule_ids_raw],
             created_at=_parse_dt(data.get("created_at")) or now_utc(),
             last_sent_at=_parse_dt(data.get("last_sent_at")),
             send_count=int(data.get("send_count", 0) or 0),
