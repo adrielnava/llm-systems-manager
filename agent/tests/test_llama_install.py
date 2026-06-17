@@ -84,7 +84,7 @@ def test_source_jobs_caps_parallelism(tmp_path):
 
 def test_release_binary_builds_download_steps(tmp_path, monkeypatch):
     monkeypatch.setattr(li, "_resolve_release_asset",
-                        lambda version: "https://example.com/llama-bin-ubuntu-x64.zip")
+                        lambda version, backend="cpu": "https://example.com/llama-bin-ubuntu-x64.zip")
     cfg = _cfg(LLAMA_BUILD_DIR=str(tmp_path))
     plan = li.plan("release_binary", {"version": "latest"}, cfg)
     dest = str(tmp_path / "release")
@@ -100,7 +100,7 @@ def test_release_binary_builds_download_steps(tmp_path, monkeypatch):
 
 def test_release_binary_targz_uses_tar(tmp_path, monkeypatch):
     monkeypatch.setattr(li, "_resolve_release_asset",
-                        lambda version: "https://example.com/llama-bin-ubuntu-x64.tar.gz")
+                        lambda version, backend="cpu": "https://example.com/llama-bin-ubuntu-x64.tar.gz")
     cfg = _cfg(LLAMA_BUILD_DIR=str(tmp_path))
     plan = li.plan("release_binary", {}, cfg)
     assert plan.steps[-1][0] == "tar"
@@ -109,13 +109,57 @@ def test_release_binary_targz_uses_tar(tmp_path, monkeypatch):
 
 
 def test_release_binary_resolve_finds_binary(tmp_path, monkeypatch):
-    monkeypatch.setattr(li, "_resolve_release_asset", lambda version: "https://x/y.zip")
+    monkeypatch.setattr(li, "_resolve_release_asset", lambda version, backend="cpu": "https://x/y.zip")
     dest = tmp_path / "release" / "build" / "bin"
     dest.mkdir(parents=True)
     (dest / "llama-server").touch()
     cfg = _cfg(LLAMA_BUILD_DIR=str(tmp_path))
     plan = li.plan("release_binary", {}, cfg)
     assert plan.resolve_binary() == str(dest / "llama-server")
+
+
+def _assets(*names):
+    return [{"name": n, "browser_download_url": f"https://example.com/{n}"} for n in names]
+
+
+def test_select_asset_cpu_skips_accelerator_variants():
+    # OpenVINO listed first must not win for a CPU backend
+    assets = _assets("llama-b1-bin-ubuntu-openvino-2026.2-x64.tar.gz",
+                     "llama-b1-bin-ubuntu-vulkan-x64.tar.gz",
+                     "llama-b1-bin-ubuntu-x64.tar.gz")
+    dl = li._select_asset(assets, ["ubuntu", "x64"], li._RELEASE_VARIANT["cpu"])
+    assert dl == "https://example.com/llama-b1-bin-ubuntu-x64.tar.gz"
+
+
+def test_select_asset_vulkan_requires_token():
+    assets = _assets("llama-b1-bin-ubuntu-x64.tar.gz",
+                     "llama-b1-bin-ubuntu-vulkan-x64.tar.gz")
+    dl = li._select_asset(assets, ["ubuntu", "x64"], li._RELEASE_VARIANT["vulkan"])
+    assert dl == "https://example.com/llama-b1-bin-ubuntu-vulkan-x64.tar.gz"
+
+
+def test_select_asset_returns_none_when_no_match():
+    assets = _assets("llama-b1-bin-ubuntu-openvino-x64.tar.gz")
+    assert li._select_asset(assets, ["ubuntu", "x64"], li._RELEASE_VARIANT["cpu"]) is None
+
+
+def test_release_binary_rejects_unknown_backend(tmp_path):
+    cfg = _cfg(LLAMA_BUILD_DIR=str(tmp_path))
+    with pytest.raises(li.InstallError):
+        li.plan("release_binary", {"backend": "openvino"}, cfg)
+
+
+def test_release_binary_passes_backend_to_resolver(tmp_path, monkeypatch):
+    seen = {}
+
+    def fake_resolve(version, backend="cpu"):
+        seen["backend"] = backend
+        return "https://example.com/llama-b1-bin-ubuntu-vulkan-x64.tar.gz"
+
+    monkeypatch.setattr(li, "_resolve_release_asset", fake_resolve)
+    cfg = _cfg(LLAMA_BUILD_DIR=str(tmp_path))
+    li.plan("release_binary", {"backend": "vulkan"}, cfg)
+    assert seen["backend"] == "vulkan"
 
 
 # Task 5: conda handler
