@@ -182,3 +182,10 @@ def test_detect_returns_none_when_unknown(monkeypatch, tmp_path):
     monkeypatch.setattr(li.os.path, "exists", lambda p: False)
     assert li.detect_method(_cfg(LLAMA_BIN="/random/bin/llama-server",
                                  LLAMA_BUILD_DIR=str(tmp_path))) is None
+
+
+def test_detect_source_when_checkout_present(tmp_path):
+    (tmp_path / "src").mkdir()
+    (tmp_path / "src" / "CMakeLists.txt").touch()
+    assert li.detect_method(_cfg(LLAMA_BIN="/random/bin/llama-server",
+                                 LLAMA_BUILD_DIR=str(tmp_path))) == "source"
