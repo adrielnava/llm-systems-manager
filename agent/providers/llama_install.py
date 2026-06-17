@@ -29,6 +29,16 @@ _BACKEND_CMAKE = {
     "rocm": ["-DGGML_HIP=ON"],
 }
 
+_ACCEL_TOKENS = ("cuda", "vulkan", "rocm", "hip", "sycl", "openvino", "musa", "cann", "kompute")
+
+_RELEASE_VARIANT = {
+    "cpu": (),
+    "metal": (),
+    "vulkan": ("vulkan",),
+    "rocm": ("rocm", "hip"),
+    "cuda": ("cuda",),
+}
+
 
 class InstallError(RuntimeError):
     """Unknown method or invalid opts; caught in _llama_build_worker."""
@@ -128,7 +138,26 @@ def _asset_match_tokens() -> list[str]:
     return [os_tok, arch_tok]
 
 
-def _resolve_release_asset(version: str) -> str:
+def _select_asset(assets: list, tokens: list, variant_tokens: tuple) -> "str | None":
+    for asset in assets:
+        name = (asset.get("name") or "").lower()
+        dl = asset.get("browser_download_url") or ""
+        if not name.endswith((".zip", ".tar.gz", ".tgz")):
+            continue
+        if not all(t in name for t in tokens):
+            continue
+        if variant_tokens:
+            if not any(v in name for v in variant_tokens):
+                continue
+        elif any(a in name for a in _ACCEL_TOKENS):
+            continue
+        if not dl.startswith("https://"):
+            raise InstallError(f"release asset URL is not https: {dl!r}")
+        return dl
+    return None
+
+
+def _resolve_release_asset(version: str, backend: str = "cpu") -> str:
     if version not in ("", "latest") and not re.fullmatch(r"[A-Za-z0-9._-]+", version):
         raise InstallError(f"invalid release version {version!r}")
     url = f"{_RELEASES_API}/latest" if version in ("", "latest") else f"{_RELEASES_API}/tags/{version}"
@@ -140,14 +169,13 @@ def _resolve_release_asset(version: str) -> str:
     except Exception as e:
         raise InstallError(f"could not query llama.cpp releases ({version}): {e}")
     tokens = _asset_match_tokens()
-    for asset in data.get("assets", []):
-        name = (asset.get("name") or "").lower()
-        dl = asset.get("browser_download_url") or ""
-        if name.endswith((".zip", ".tar.gz", ".tgz")) and all(t in name for t in tokens):
-            if not dl.startswith("https://"):
-                raise InstallError(f"release asset URL is not https: {dl!r}")
-            return dl
-    raise InstallError(f"no release asset matched {tokens} for version {version!r}")
+    variant_tokens = _RELEASE_VARIANT.get(backend, ())
+    dl = _select_asset(data.get("assets", []), tokens, variant_tokens)
+    if dl is None:
+        raise InstallError(
+            f"no release asset matched {tokens} (backend {backend!r}) for version {version!r}"
+        )
+    return dl
 
 
 def _find_under(root: Path, name: str) -> "str | None":
@@ -167,7 +195,10 @@ def _h_release_binary(opts: dict, cfg) -> InstallPlan:
     dest = root / "release"
     tmp = root / "release.download"
     version = (opts.get("version") or "latest").strip()
-    url = _resolve_release_asset(version)
+    backend = (opts.get("backend") or "cpu").strip().lower()
+    if backend not in _BACKEND_CMAKE:
+        raise InstallError(f"unknown backend {backend!r}; valid: {', '.join(sorted(_BACKEND_CMAKE))}")
+    url = _resolve_release_asset(version, backend)
     if url.lower().endswith(".zip"):
         unpack, unpack_tool = ["unzip", "-o", str(tmp), "-d", str(dest)], "unzip"
     else:
