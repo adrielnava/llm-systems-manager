@@ -1329,9 +1329,9 @@ def _llama_build_worker() -> None:
             rc = 2
             return
         env = dict(os.environ)
+        env.update(iplan.env or {})
         env["PYTHONUNBUFFERED"] = "1"
         env["FORCE_COLOR"] = "0"
-        env.update(iplan.env or {})
         joined = " && ".join(" ".join(s) for s in iplan.steps)
         _build_put({"type": "start", "cmd": joined, "method": iplan.label})
         rc = 0
