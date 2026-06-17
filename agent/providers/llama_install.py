@@ -7,6 +7,7 @@ standalone in tests via importlib without triggering providers/__init__.py.
 from __future__ import annotations
 
 import os
+import re
 import shutil
 import subprocess
 from dataclasses import dataclass
@@ -56,20 +57,25 @@ def _h_custom_script(opts: dict, cfg) -> InstallPlan:
     )
 
 
+_GIT_REF_RE = re.compile(r"[A-Za-z0-9._/][A-Za-z0-9._/-]*\Z")
+
+
 def _h_source(opts: dict, cfg) -> InstallPlan:
     root = _build_root(cfg)
     src = root / "src"
     build = src / "build"
     ref = (opts.get("git_ref") or "master").strip()
+    if not _GIT_REF_RE.match(ref):
+        raise InstallError(f"invalid git_ref {ref!r} (must match {_GIT_REF_RE.pattern})")
     backend = (opts.get("backend") or "cpu").strip().lower()
     flags = _BACKEND_CMAKE.get(backend, [])
     if src.exists():
         fetch = [
-            ["git", "-C", str(src), "fetch", "--depth", "1", "origin", ref],
+            ["git", "-C", str(src), "fetch", "--depth", "1", "origin", "--", ref],
             ["git", "-C", str(src), "checkout", "-f", "FETCH_HEAD"],
         ]
     else:
-        fetch = [["git", "clone", "--depth", "1", "--branch", ref, REPO_URL, str(src)]]
+        fetch = [["git", "clone", "--depth", "1", "--branch", ref, "--", REPO_URL, str(src)]]
     steps = [
         *fetch,
         ["cmake", "-S", str(src), "-B", str(build), *flags],

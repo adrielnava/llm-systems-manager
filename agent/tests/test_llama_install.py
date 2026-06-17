@@ -43,7 +43,8 @@ def test_source_clone_when_absent(tmp_path):
     build = str(tmp_path / "src" / "build")
     assert plan.method == "source"
     # first step clones (src dir absent), then two cmake steps
-    assert plan.steps[0] == ["git", "clone", "--depth", "1", "--branch", "b1234", li.REPO_URL, src]
+    # ref is validated and a `--` terminator separates options from positionals
+    assert plan.steps[0] == ["git", "clone", "--depth", "1", "--branch", "b1234", "--", li.REPO_URL, src]
     assert ["cmake", "-S", src, "-B", build, "-DGGML_VULKAN=ON"] in plan.steps
     assert ["cmake", "--build", build, "--target", "llama-server", "-j"] in plan.steps
     assert plan.resolve_binary() == str(tmp_path / "src" / "build" / "bin" / "llama-server")
@@ -56,5 +57,12 @@ def test_source_fetch_when_present(tmp_path):
     cfg = _cfg(LLAMA_BUILD_DIR=str(tmp_path))
     plan = li.plan("source", {}, cfg)
     src = str(tmp_path / "src")
-    assert plan.steps[0] == ["git", "-C", src, "fetch", "--depth", "1", "origin", "master"]
+    assert plan.steps[0] == ["git", "-C", src, "fetch", "--depth", "1", "origin", "--", "master"]
     assert plan.steps[1] == ["git", "-C", src, "checkout", "-f", "FETCH_HEAD"]
+
+
+def test_source_rejects_flaglike_ref(tmp_path):
+    cfg = _cfg(LLAMA_BUILD_DIR=str(tmp_path))
+    for bad in ("--upload-pack=evil", "-x", "a b", "foo;bar"):
+        with pytest.raises(li.InstallError):
+            li.plan("source", {"git_ref": bad}, cfg)
