@@ -140,18 +140,24 @@ def _resolve_release_asset(version: str) -> str:
     tokens = _asset_match_tokens()
     for asset in data.get("assets", []):
         name = (asset.get("name") or "").lower()
+        dl = asset.get("browser_download_url") or ""
         if name.endswith((".zip", ".tar.gz", ".tgz")) and all(t in name for t in tokens):
-            return asset["browser_download_url"]
+            if not dl.startswith("https://"):
+                raise InstallError(f"release asset URL is not https: {dl!r}")
+            return dl
     raise InstallError(f"no release asset matched {tokens} for version {version!r}")
 
 
 def _find_under(root: Path, name: str) -> "str | None":
     if not root.exists():
         return None
-    for p in root.rglob(name):
-        if p.is_file():
-            return str(p)
-    return None
+    matches = sorted(str(p) for p in root.rglob(name) if p.is_file())
+    if not matches:
+        return None
+    for m in matches:
+        if os.sep + "bin" + os.sep in m:
+            return m
+    return matches[0]
 
 
 def _h_release_binary(opts: dict, cfg) -> InstallPlan:
@@ -189,9 +195,12 @@ def _h_homebrew(opts: dict, cfg) -> InstallPlan:
     brew = shutil.which("brew")
     if not brew:
         raise InstallError("brew not found on PATH")
-    listed = subprocess.run([brew, "list", "--formula", "llama.cpp"],
-                            capture_output=True, text=True)
-    sub = "upgrade" if listed.returncode == 0 else "install"
+    try:
+        listed = subprocess.run([brew, "list", "--formula", "llama.cpp"],
+                                capture_output=True, text=True, timeout=30)
+        sub = "upgrade" if listed.returncode == 0 else "install"
+    except Exception:
+        sub = "install"
 
     def _resolve() -> "str | None":
         try:
@@ -231,11 +240,15 @@ def detect_method(cfg) -> "str | None":
     p = bin_path.lower()
     if "/homebrew/" in p or p.startswith("/opt/homebrew") or "/cellar/" in p:
         return "homebrew"
-    conda_prefix = os.environ.get("CONDA_PREFIX") or ""
-    if "/envs/" in p or "/miniconda" in p or "/anaconda" in p or (conda_prefix and bin_path.startswith(conda_prefix)):
+    conda_prefix = (os.environ.get("CONDA_PREFIX") or "").lower()
+    conda_env = len(conda_prefix) > 5 and p.startswith(conda_prefix)
+    if "/envs/" in p or "/miniconda" in p or "/anaconda" in p or conda_env:
         return "conda"
+    root = _build_root(cfg)
+    if bin_path and str(root / "release").lower() in p:
+        return "release_binary"
+    if (root / "src" / "CMakeLists.txt").exists():
+        return "source"
     if os.path.exists(LEGACY_SCRIPT):
         return "custom_script"
-    if (_build_root(cfg) / "src" / "CMakeLists.txt").exists():
-        return "source"
     return None

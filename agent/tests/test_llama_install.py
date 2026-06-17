@@ -167,9 +167,15 @@ def test_detect_conda_path():
     assert li.detect_method(_cfg(LLAMA_BIN="/home/u/miniconda3/envs/llm/bin/llama-server")) == "conda"
 
 
-def test_detect_custom_script_when_legacy_present(monkeypatch):
+def test_detect_release_binary(tmp_path):
+    binp = str(tmp_path / "release" / "build" / "bin" / "llama-server")
+    assert li.detect_method(_cfg(LLAMA_BIN=binp, LLAMA_BUILD_DIR=str(tmp_path))) == "release_binary"
+
+
+def test_detect_custom_script_when_legacy_present(monkeypatch, tmp_path):
     monkeypatch.setattr(li.os.path, "exists", lambda p: p == li.LEGACY_SCRIPT)
-    assert li.detect_method(_cfg(LLAMA_BIN="/usr/local/llama-server/llama-server")) == "custom_script"
+    assert li.detect_method(_cfg(LLAMA_BIN="/usr/local/llama-server/llama-server",
+                                 LLAMA_BUILD_DIR=str(tmp_path))) == "custom_script"
 
 
 def test_detect_returns_none_when_unknown(monkeypatch, tmp_path):
