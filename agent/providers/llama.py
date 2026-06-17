@@ -100,7 +100,6 @@ _LLAMA_VALUE_FLAGS = {
 _build_queue: "_queue_lib.Queue[dict[str, Any]]" = _queue_lib.Queue(maxsize=4000)
 _build_lock = threading.Lock()
 _build_running = False
-_LLAMA_BUILD_SCRIPT = llama_install.LEGACY_SCRIPT
 
 _bench_queue: "_queue_lib.Queue[dict]" = _queue_lib.Queue(maxsize=5000)
 _bench_lock = threading.Lock()
