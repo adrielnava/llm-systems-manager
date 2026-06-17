@@ -34,3 +34,27 @@ def test_empty_method_falls_back_to_custom_script():
 def test_unknown_method_raises_install_error():
     with pytest.raises(li.InstallError):
         li.plan("nixpkgs", {}, _cfg())
+
+
+def test_source_clone_when_absent(tmp_path):
+    cfg = _cfg(LLAMA_BUILD_DIR=str(tmp_path))
+    plan = li.plan("source", {"git_ref": "b1234", "backend": "vulkan"}, cfg)
+    src = str(tmp_path / "src")
+    build = str(tmp_path / "src" / "build")
+    assert plan.method == "source"
+    # first step clones (src dir absent), then two cmake steps
+    assert plan.steps[0] == ["git", "clone", "--depth", "1", "--branch", "b1234", li.REPO_URL, src]
+    assert ["cmake", "-S", src, "-B", build, "-DGGML_VULKAN=ON"] in plan.steps
+    assert ["cmake", "--build", build, "--target", "llama-server", "-j"] in plan.steps
+    assert plan.resolve_binary() == str(tmp_path / "src" / "build" / "bin" / "llama-server")
+    # no sudo anywhere
+    assert all(s[0] != "sudo" for s in plan.steps)
+
+
+def test_source_fetch_when_present(tmp_path):
+    (tmp_path / "src").mkdir()
+    cfg = _cfg(LLAMA_BUILD_DIR=str(tmp_path))
+    plan = li.plan("source", {}, cfg)
+    src = str(tmp_path / "src")
+    assert plan.steps[0] == ["git", "-C", src, "fetch", "--depth", "1", "origin", "master"]
+    assert plan.steps[1] == ["git", "-C", src, "checkout", "-f", "FETCH_HEAD"]

@@ -9,7 +9,7 @@ from __future__ import annotations
 import os
 import shutil
 import subprocess
-from dataclasses import dataclass, field
+from dataclasses import dataclass
 from pathlib import Path
 from typing import Any, Callable
 
@@ -56,8 +56,34 @@ def _h_custom_script(opts: dict, cfg) -> InstallPlan:
     )
 
 
+def _h_source(opts: dict, cfg) -> InstallPlan:
+    root = _build_root(cfg)
+    src = root / "src"
+    build = src / "build"
+    ref = (opts.get("git_ref") or "master").strip()
+    backend = (opts.get("backend") or "cpu").strip().lower()
+    flags = _BACKEND_CMAKE.get(backend, [])
+    if src.exists():
+        fetch = [
+            ["git", "-C", str(src), "fetch", "--depth", "1", "origin", ref],
+            ["git", "-C", str(src), "checkout", "-f", "FETCH_HEAD"],
+        ]
+    else:
+        fetch = [["git", "clone", "--depth", "1", "--branch", ref, REPO_URL, str(src)]]
+    steps = [
+        *fetch,
+        ["cmake", "-S", str(src), "-B", str(build), *flags],
+        ["cmake", "--build", str(build), "--target", "llama-server", "-j"],
+    ]
+    return InstallPlan(
+        method="source", label="source", steps=steps, cwd=None, env={},
+        resolve_binary=lambda: str(build / "bin" / "llama-server"),
+    )
+
+
 METHODS: dict[str, Callable[[dict, Any], InstallPlan]] = {
     "custom_script": _h_custom_script,
+    "source": _h_source,
 }
 
 
