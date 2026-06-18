@@ -269,6 +269,14 @@ def test_missing_build_tools_any_of_tuple():
     assert li.missing_build_tools([("no-a-xyz", "no-b-xyz")], env) == ["no-a-xyz or no-b-xyz"]
 
 
+def test_missing_build_tools_absolute_path(tmp_path):
+    real = tmp_path / "real-tool"; real.touch(); real.chmod(0o755)
+    ghost = tmp_path / "ghost-tool"
+    env = {"PATH": ""}                                    # absolute paths ignore PATH
+    assert li.missing_build_tools([str(real)], env) == []
+    assert li.missing_build_tools([str(ghost)], env) == [str(ghost)]
+
+
 class _FakeProc:
     def __init__(self, lines, rc):
         self.stdout = io.StringIO("".join(lines))

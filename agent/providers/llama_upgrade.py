@@ -43,12 +43,12 @@ class UpgradeResult:
     ok: bool
     message: str
     target: "str | None" = None
-    swapped: list = field(default_factory=list)
+    swapped: "list[str]" = field(default_factory=list)
     backup_dir: "str | None" = None
     skipped: bool = False
 
 
-def should_upgrade_in_place(method: str, opts: dict) -> bool:
+def should_upgrade_in_place(method: str, opts: "dict | None") -> bool:
     """True only for source/release_binary with opts['install_in_place'] set."""
     return bool((opts or {}).get("install_in_place")) and method in ("source", "release_binary")
 
@@ -77,7 +77,7 @@ def _owner_name(uid: int) -> str:
 
 def _probe_writable(d: Path) -> bool:
     """Confirm we can os.replace inside d (not just dir-write) — covers
-    sticky-bit dirs and files owned by another user."""
+    sticky-bit dirs where a dir-write check alone is insufficient."""
     try:
         fd, tmp = tempfile.mkstemp(prefix=_STAGE_PREFIX, dir=str(d))
         os.close(fd)
@@ -126,7 +126,7 @@ def _smoke(binp: Path, libdir: Path, timeout: int = 30) -> "tuple[bool, str]":
     try:
         r = subprocess.run([str(binp), "--version"], capture_output=True, text=True,
                            timeout=timeout, env=env)
-    except Exception as e:
+    except (OSError, subprocess.SubprocessError) as e:
         return False, f"{e}"
     return r.returncode == 0, ((r.stdout or "") + (r.stderr or "")).strip()
 
@@ -148,7 +148,8 @@ def upgrade_in_place(resolved_bin: str, dest_bin: str, *, build_root=None,
                      retain: int = 2, emit=lambda _s: None,
                      smoke: bool = True) -> UpgradeResult:
     """Swap the freshly-built artifacts beside resolved_bin onto the live install
-    at dirname(dest_bin). No changes on any failure path."""
+    at dirname(dest_bin). Aborts before committing on any pre-commit failure;
+    rolls back from the backup on a mid-swap failure."""
     src_file = Path(resolved_bin)
     src_dir = src_file.parent
     dest_file = Path(dest_bin)
@@ -189,9 +190,14 @@ def upgrade_in_place(resolved_bin: str, dest_bin: str, *, build_root=None,
     staging = Path(tempfile.mkdtemp(prefix=_STAGE_PREFIX, dir=str(dest_real)))
     backup = None
     try:
-        for name in names:
-            _copy_one(src_dir / name, staging / name)
-        _fsync_dir(staging)
+        try:
+            for name in names:
+                _copy_one(src_dir / name, staging / name)
+            _fsync_dir(staging)
+        except OSError as e:
+            msg = f"[error] failed to stage {name!r}: {e}; aborting swap (no changes)"
+            emit(msg)
+            return UpgradeResult(False, msg)
 
         if smoke:
             ok, out = _smoke(staging / bin_name, staging)
@@ -202,12 +208,17 @@ def upgrade_in_place(resolved_bin: str, dest_bin: str, *, build_root=None,
 
         ts = datetime.datetime.now(datetime.timezone.utc).strftime("%Y%m%dT%H%M%SZ")
         backup = dest_real / f"{_BACKUP_PREFIX}{ts}"
-        backup.mkdir()
-        for name in names:
-            live = dest_real / name
-            if live.exists() or live.is_symlink():
-                _copy_one(live, backup / name)
-        _fsync_dir(backup)
+        try:
+            backup.mkdir()
+            for name in names:
+                live = dest_real / name
+                if live.exists() or live.is_symlink():
+                    _copy_one(live, backup / name)
+            _fsync_dir(backup)
+        except OSError as e:
+            msg = f"[error] failed to back up current install: {e}; aborting swap (no changes)"
+            emit(msg)
+            return UpgradeResult(False, msg)
 
         committed = []
         try:
@@ -215,13 +226,20 @@ def upgrade_in_place(resolved_bin: str, dest_bin: str, *, build_root=None,
                 os.replace(str(staging / name), str(dest_real / name))
                 committed.append(name)
         except OSError as e:
+            rolled, failed = [], []
             for name in committed:
                 try:
                     os.replace(str(backup / name), str(dest_real / name))
-                except OSError:
-                    pass
-            msg = (f"[error] swap failed; rolled back {len(committed)} file(s) from {backup}. "
-                   f"cause: {e}")
+                    rolled.append(name)
+                except OSError as re_err:
+                    failed.append(f"{name}: {re_err}")
+            if failed:
+                msg = (f"[error] swap failed AND rollback incomplete — live install may be "
+                       f"inconsistent; restore manually from {backup}. not restored: "
+                       f"{'; '.join(failed)}. cause: {e}")
+            else:
+                msg = (f"[error] swap failed; rolled back {len(rolled)} file(s) from {backup}. "
+                       f"cause: {e}")
             emit(msg)
             return UpgradeResult(False, msg, backup_dir=str(backup))
         _fsync_dir(dest_real)
@@ -235,7 +253,7 @@ def upgrade_in_place(resolved_bin: str, dest_bin: str, *, build_root=None,
             except OSError: pass
     try:
         _prune_backups(dest_real, retain, emit)
-    except OSError:
+    except Exception:
         pass
 
     emit(f"[ok] upgraded {len(names)} file(s) at {dest_real}: {', '.join(names)}")

@@ -28,7 +28,7 @@ def _fake_leaf(*, plan_result="PLAN", run_result, raise_plan=False):
         plan.seen = {"method": method, "opts": opts, "cfg": cfg}
         return plan_result
 
-    def run_install(iplan, emit=lambda _s: None):
+    def run_install(iplan, emit=lambda _s: None, **_kw):
         return run_result
 
     return types.SimpleNamespace(InstallError=_Err, plan=plan, run_install=run_install)
@@ -61,6 +61,15 @@ def test_install_llama_returns_rc_on_failed_build(monkeypatch, capsys, tmp_path)
 def test_install_llama_errors_when_binary_missing(monkeypatch, capsys):
     il = _load_install_llama()
     leaf = _fake_leaf(run_result=(0, "/nonexistent/llama-server"))
+    monkeypatch.setattr(il, "_load_leaf", lambda: leaf)
+    rc = il.main(["--method", "source"])
+    assert rc == 4
+    assert "RESOLVED_BIN=" not in capsys.readouterr().out
+
+
+def test_install_llama_errors_when_resolved_is_none(monkeypatch, capsys):
+    il = _load_install_llama()
+    leaf = _fake_leaf(run_result=(0, None))               # rc 0 but resolve returned None
     monkeypatch.setattr(il, "_load_leaf", lambda: leaf)
     rc = il.main(["--method", "source"])
     assert rc == 4

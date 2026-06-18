@@ -19,7 +19,11 @@ from pathlib import Path
 def _load_leaf():
     agent_root = Path(__file__).resolve().parent.parent
     leaf = agent_root / "providers" / "llama_install.py"
+    if not leaf.exists():
+        raise SystemExit(f"[error] llama_install leaf not found at {leaf}")
     spec = importlib.util.spec_from_file_location("llama_install", leaf)
+    if spec is None or spec.loader is None:
+        raise SystemExit(f"[error] cannot load llama_install leaf at {leaf}")
     mod = importlib.util.module_from_spec(spec)
     sys.modules["llama_install"] = mod
     spec.loader.exec_module(mod)
@@ -63,7 +67,11 @@ def main(argv=None) -> int:
         emit(f"[error] {e}")
         return 2
 
-    rc, resolved = li.run_install(iplan, emit=emit)
+    try:
+        rc, resolved = li.run_install(iplan, emit=emit)
+    except OSError as e:
+        emit(f"[error] llama.cpp install crashed: {e}")
+        return 127
     if rc != 0:
         emit(f"[error] llama.cpp install failed (rc={rc})")
         return rc

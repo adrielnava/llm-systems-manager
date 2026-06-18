@@ -1336,11 +1336,13 @@ def _llama_build_worker() -> None:
             if llama_upgrade.should_upgrade_in_place(method, opts) and bin_cfg and resolved:
                 try:
                     br = str(llama_install._build_root(cfg))
-                except Exception:
+                except Exception as e:
+                    emit(f"[warn] could not resolve build root: {e}; tarball cleanup skipped")
                     br = None
                 try:
                     retain = int(opts.get("backup_retain", 2))
                 except (TypeError, ValueError):
+                    emit(f"[warn] backup_retain {opts.get('backup_retain')!r} is not an integer; using 2")
                     retain = 2
                 res = llama_upgrade.upgrade_in_place(
                     resolved, bin_cfg, build_root=br,

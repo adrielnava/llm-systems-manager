@@ -89,9 +89,8 @@ LLAMA_SYSTEMD_UNIT_OVERRIDE=""
 LLAMA_BIN_OVERRIDE=""
 LLAMA_CONFIG_INI_OVERRIDE=""
 LLAMA_BUILD_METHOD_OVERRIDE=""
-# Optional setup-time llama.cpp install (#88). When requested, the installer
-# runs install/install_llama.py as the agent user to perform a fresh install
-# and wires LLAMA_BIN / the build method to the result.
+# Setup-time llama.cpp install via install/install_llama.py (run as the agent
+# user); wires LLAMA_BIN and the build method to the result.
 INSTALL_LLAMA=false
 INSTALL_LLAMA_METHOD="release_binary"
 INSTALL_LLAMA_BACKEND="cpu"
@@ -1871,9 +1870,8 @@ _install_llama_now() {
   printf '%s\n' "$bin"
 }
 
-# _offer_llama_unit UNIT BIN — after a setup-time install, offer a starter
-# systemd unit pointing at BIN. Never overwrites an existing unit; never
-# enables/starts (the operator must add model flags first).
+# _offer_llama_unit UNIT BIN — offer a starter systemd unit pointing at BIN.
+# Never overwrites an existing unit; never enables/starts.
 _offer_llama_unit() {
   local unit="$1" bin="$2"
   [[ -n "$unit" && -n "$bin" ]] || return 0
@@ -2089,8 +2087,7 @@ _detect_llama() {
      && command -v brew >/dev/null 2>&1 && [[ -x /opt/homebrew/bin/llama-server ]]; then
     detected_build_method="homebrew"
   fi
-  # A setup-time install knows its own method (path-based detection would
-  # mislabel a managed release_binary/source install as custom_script).
+  # Prefer the method we installed with over path-based detection.
   if [[ "${_llama_just_installed:-false}" == true && -n "${_llama_installed_method:-}" ]]; then
     detected_build_method="$_llama_installed_method"
   fi
@@ -2550,6 +2547,10 @@ _configure_openclaw_otel() {
     echo "      ⚠ Some openclaw config commands failed — review above output."
   fi
 }
+
+if $INSTALL_LLAMA && [[ "$ROLE" != "auto" ]]; then
+  _warn "--install-llama only applies with --role auto; ignoring for role=$ROLE"
+fi
 
 if [[ "$ROLE" == "auto" ]]; then
   echo

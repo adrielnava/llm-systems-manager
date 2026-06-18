@@ -326,7 +326,8 @@ def run_install(iplan: InstallPlan, *, env: "dict | None" = None,
     if rc == 0:
         try:
             resolved = iplan.resolve_binary()
-        except Exception:
+        except Exception as e:
+            emit(f"[warn] build succeeded but binary location could not be resolved: {e}")
             resolved = None
     return rc, resolved
 

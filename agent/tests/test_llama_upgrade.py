@@ -154,6 +154,44 @@ def test_upgrade_prunes_old_backups_keeping_retain(tmp_path):
     assert "20200101" not in backups[0] and "20200102" not in backups[0]
 
 
+def test_upgrade_rolls_back_on_partial_swap_failure(tmp_path, monkeypatch):
+    src = _src(tmp_path, marker="new")
+    dest = _dest(tmp_path)
+    real_replace = os.replace
+    fwd = {"n": 0}
+
+    def flaky_replace(a, b):
+        # count only real forward swaps (staging→dest), not the writability
+        # probe (b ends .mv) or rollback (a is under the backup dir)
+        if lu._STAGE_PREFIX in str(a) and not str(b).endswith(".mv"):
+            fwd["n"] += 1
+            if fwd["n"] == 2:
+                raise OSError("simulated mid-swap failure")
+        return real_replace(a, b)
+
+    monkeypatch.setattr(lu.os, "replace", flaky_replace)
+    seen = []
+    res = lu.upgrade_in_place(str(src / "llama-server"), str(dest / "llama-server"),
+                              emit=seen.append)
+    assert not res.ok
+    assert any("rolled back" in s for s in seen)
+    # every live file is back to its original content — no half-swapped state
+    assert "version old" in (dest / "llama-server").read_text()
+    assert (dest / "libggml-base.so").read_text() == "GGML-old"
+
+
+def test_upgrade_aborts_when_dir_not_writable_despite_uid_match(tmp_path, monkeypatch):
+    src = _src(tmp_path)
+    dest = _dest(tmp_path)
+    monkeypatch.setattr(lu, "_probe_writable", lambda _d: False)
+    seen = []
+    res = lu.upgrade_in_place(str(src / "llama-server"), str(dest / "llama-server"),
+                              emit=seen.append)
+    assert not res.ok
+    assert "version old" in (dest / "llama-server").read_text()
+    assert any("writable by the agent user" in s for s in seen)
+
+
 def test_upgrade_copies_symlink_artifacts_as_symlinks(tmp_path):
     src = _src(tmp_path)
     # libllama.so -> libllama.so.1 (symlink artifact)
