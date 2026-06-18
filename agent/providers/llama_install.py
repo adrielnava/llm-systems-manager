@@ -113,10 +113,17 @@ def _h_source(opts: dict, cfg) -> InstallPlan:
         ]
     else:
         fetch = [["git", "clone", "--depth", "1", "--branch", ref, "--", REPO_URL, str(src)]]
-    build_step = ["cmake", "--build", str(build), "--target", "llama-server", "-j"]
     jobs = opts.get("jobs")
-    if jobs:
-        build_step.append(str(int(jobs)))
+    if jobs in (None, ""):
+        njobs = os.cpu_count() or 1
+    else:
+        try:
+            njobs = int(jobs)
+        except (TypeError, ValueError):
+            raise InstallError(f"invalid jobs {jobs!r}; must be a positive integer")
+        if njobs < 1:
+            raise InstallError(f"invalid jobs {jobs!r}; must be a positive integer")
+    build_step = ["cmake", "--build", str(build), "--target", "llama-server", "-j", str(njobs)]
     steps = [
         *fetch,
         ["cmake", "-S", str(src), "-B", str(build), *flags],
