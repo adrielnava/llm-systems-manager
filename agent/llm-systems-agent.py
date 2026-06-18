@@ -59,7 +59,7 @@ except ImportError:
             os.chmod(tmp, mode)
         tmp.replace(p)
 
-VERSION = "v2026.06.18-1"
+VERSION = "v2026.06.18-4"
 
 
 def _detect_install_dir() -> str:
@@ -2786,7 +2786,8 @@ def agent_self_update(authorization: Optional[str] = Header(default=None)) -> St
 
         try:
             with tarfile.open(tarball_path, "r:gz") as tf:
-                tf.extractall(repo_dir)
+                extra = {"filter": "data"} if sys.version_info >= (3, 12) else {}
+                tf.extractall(repo_dir, **extra)
         except Exception as e:
             logger.warning("self-update: tar extract failed: %s", e)
             yield _sse_event({"stage": "done", "ok": False,
