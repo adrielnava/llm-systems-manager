@@ -76,6 +76,7 @@ LLAMA_ENABLED: false
 # LLAMA_BUILD_OPTS:          # per-method knobs (YAML only — not settable via LSA_* env)
 #   git_ref: master          #   source: branch/tag/commit
 #   backend: cpu             #   source: cpu|cuda|vulkan|metal|rocm
+#   jobs: 8                  #   source: build parallelism (-j N); blank => nproc
 #   version: latest          #   release_binary: 'latest' or a release tag
 #   script_path: /usr/local/llama-server/build-llama-cpp.sh   # custom_script
 #   install_in_place: false  #   source/release_binary: swap new binaries+libs

@@ -39,7 +39,8 @@ def test_unknown_method_raises_install_error():
         li.plan("nixpkgs", {}, _cfg())
 
 
-def test_source_clone_when_absent(tmp_path):
+def test_source_clone_when_absent(tmp_path, monkeypatch):
+    monkeypatch.setattr(li.os, "cpu_count", lambda: 6)
     cfg = _cfg(LLAMA_BUILD_DIR=str(tmp_path))
     plan = li.plan("source", {"git_ref": "b1234", "backend": "vulkan"}, cfg)
     src = str(tmp_path / "src")
@@ -47,7 +48,7 @@ def test_source_clone_when_absent(tmp_path):
     assert plan.method == "source"
     assert plan.steps[0] == ["git", "clone", "--depth", "1", "--branch", "b1234", "--", li.REPO_URL, src]
     assert ["cmake", "-S", src, "-B", build, "-DGGML_VULKAN=ON"] in plan.steps
-    assert ["cmake", "--build", build, "--target", "llama-server", "-j"] in plan.steps
+    assert ["cmake", "--build", build, "--target", "llama-server", "-j", "6"] in plan.steps
     assert plan.resolve_binary() == str(tmp_path / "src" / "build" / "bin" / "llama-server")
     assert all(s[0] != "sudo" for s in plan.steps)
     assert plan.tools == ("git", "cmake")
@@ -80,6 +81,22 @@ def test_source_jobs_caps_parallelism(tmp_path):
     plan = li.plan("source", {"jobs": 4}, cfg)
     build = str(tmp_path / "src" / "build")
     assert ["cmake", "--build", build, "--target", "llama-server", "-j", "4"] in plan.steps
+
+
+def test_source_jobs_defaults_to_nproc(tmp_path, monkeypatch):
+    monkeypatch.setattr(li.os, "cpu_count", lambda: 12)
+    cfg = _cfg(LLAMA_BUILD_DIR=str(tmp_path))
+    build = str(tmp_path / "src" / "build")
+    for opts in ({}, {"jobs": ""}, {"jobs": None}):
+        plan = li.plan("source", opts, cfg)
+        assert ["cmake", "--build", build, "--target", "llama-server", "-j", "12"] in plan.steps
+
+
+def test_source_rejects_invalid_jobs(tmp_path):
+    cfg = _cfg(LLAMA_BUILD_DIR=str(tmp_path))
+    for bad in ("x", "1.5", 0, -3):
+        with pytest.raises(li.InstallError):
+            li.plan("source", {"jobs": bad}, cfg)
 
 
 # Task 4: release_binary handler
