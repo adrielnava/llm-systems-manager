@@ -153,6 +153,30 @@ def _valid_git_ref(ref: str) -> bool:
         and not ref.startswith("/") and not ref.endswith("/")
 
 
+def _hip_build_env() -> dict:
+    """Resolve HIPCXX/HIP_PATH for a rocm source build, mirroring upstream's
+    HIPCXX="$(hipconfig -l)/clang" HIP_PATH="$(hipconfig -R)"."""
+    hipconfig = shutil.which("hipconfig")
+    if not hipconfig:
+        raise InstallError(
+            "rocm backend selected but 'hipconfig' was not found on PATH; "
+            "install ROCm/HIP (or choose a different backend) and retry"
+        )
+    try:
+        lib = subprocess.run([hipconfig, "-l"], capture_output=True, text=True,
+                             timeout=30, check=True).stdout.strip()
+        root = subprocess.run([hipconfig, "-R"], capture_output=True, text=True,
+                              timeout=30, check=True).stdout.strip()
+    except (OSError, subprocess.SubprocessError) as e:
+        raise InstallError(f"could not query hipconfig for rocm build env: {e}")
+    if not lib or not root:
+        raise InstallError(
+            f"hipconfig returned empty HIP paths (-l={lib!r}, -R={root!r}); "
+            "the ROCm/HIP install looks incomplete"
+        )
+    return {"HIPCXX": f"{lib}/clang", "HIP_PATH": root}
+
+
 def _h_source(opts: dict, cfg) -> InstallPlan:
     root = _build_root(cfg)
     src = root / "src"
@@ -163,7 +187,8 @@ def _h_source(opts: dict, cfg) -> InstallPlan:
     backend = (opts.get("backend") or "cpu").strip().lower()
     if backend not in _BACKEND_CMAKE:
         raise InstallError(f"unknown backend {backend!r}; valid: {', '.join(sorted(_BACKEND_CMAKE))}")
-    flags = _BACKEND_CMAKE[backend]
+    flags = ["-DCMAKE_BUILD_TYPE=Release", *_BACKEND_CMAKE[backend]]
+    env = _hip_build_env() if backend == "rocm" else {}
     if src.exists():
         fetch = [
             ["git", "-C", str(src), "fetch", "--depth", "1", "origin", "--", ref],
@@ -195,7 +220,7 @@ def _h_source(opts: dict, cfg) -> InstallPlan:
         *build_steps,
     ]
     return InstallPlan(
-        method="source", label="source", steps=steps, cwd=None, env={},
+        method="source", label="source", steps=steps, cwd=None, env=env,
         tools=("git", "cmake"),
         resolve_binary=lambda: str(build / "bin" / "llama-server"),
     )
