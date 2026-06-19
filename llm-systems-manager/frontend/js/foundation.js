@@ -306,6 +306,8 @@ function _selectAgent(provider, agentId) {
     try { saveLayout(); } catch (_) {}
   }
   _renderAgentPickers();
+  // Reset the editor/download/cache/build panels before loading the new agent.
+  if (typeof resetLLMControlPanels === 'function') resetLLMControlPanels();
   // Clear the disk-usage bar list (guarded render keeps its last value when a
   // sample lacks disk, so it'd otherwise show the previous agent's mounts) (#121).
   const _clearBars = (id) => { const el = document.getElementById(id); if (el) el.innerHTML = ''; };

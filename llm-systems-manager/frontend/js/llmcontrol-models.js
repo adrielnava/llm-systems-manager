@@ -1189,10 +1189,14 @@ async function startDownload() {
       log.scrollTop = log.scrollHeight;
     } else if (msg.type === 'done') {
       if (_isDryRun) {
-        // Dry run uses --format json — parse and format the buffered output
+        // Dry run uses --format json — extract the JSON payload and format it
         let formatted = _dlBuffer;
         try {
-          const parsed = JSON.parse(_dlBuffer.trim());
+          let txt = _dlBuffer.trim();
+          const s = txt.search(/[\[{]/);
+          const e = Math.max(txt.lastIndexOf(']'), txt.lastIndexOf('}'));
+          if (s !== -1 && e > s) txt = txt.slice(s, e + 1);
+          const parsed = JSON.parse(txt);
           const files = Array.isArray(parsed) ? parsed : [parsed];
           if (files.length) {
             formatted = 'Files that would be downloaded:\n\n' +
@@ -1262,6 +1266,32 @@ function closeLlamaBuildPanel() {
   }
   const p = document.getElementById('llamaBuildPanel');
   if (p) p.style.display = 'none';
+}
+
+// Reset the editor, HF download, cache, and llama build panels to empty state.
+function resetLLMControlPanels() {
+  if (typeof closeEditor === 'function') closeEditor();
+  if (typeof closeLlamaBuildPanel === 'function') closeLlamaBuildPanel();
+  if (_dlEventSrc) { try { _dlEventSrc.close(); } catch(_){} _dlEventSrc = null; }
+  _dlLastRepo  = '';
+  _dlLastQuant = '';
+  const _set = (id, prop, val) => { const el = document.getElementById(id); if (el) el[prop] = val; };
+  _set('dlRepo', 'value', '');
+  _set('dlInclude', 'value', '');
+  _set('dlChkConfig', 'checked', true);
+  _set('dlChkTemplate', 'checked', true);
+  _set('dlChkMmproj', 'checked', true);
+  _set('dlChkDryRun', 'checked', true);
+  _set('dlLog', 'textContent', 'Download output will appear here...');
+  const _add = document.getElementById('dlAddBtn');
+  if (_add) { _add.style.display = 'none'; _add.innerHTML = ''; }
+  _set('dlBtn', 'disabled', false);
+  if (typeof _setDlRunning === 'function') _setDlRunning(false);
+  _set('cacheRmRepo', 'value', '');
+  _set('cacheLog', 'textContent', 'Cache info will appear here...');
+  // LM Studio download panel.
+  _set('lmsDlModel', 'value', '');
+  _set('lmsDlLog', 'textContent', 'Download status will appear here...');
 }
 
 async function startLlamaBuild() {
