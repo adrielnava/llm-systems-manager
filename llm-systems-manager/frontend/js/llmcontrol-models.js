@@ -1268,6 +1268,29 @@ function closeLlamaBuildPanel() {
   if (p) p.style.display = 'none';
 }
 
+// Reset the editor, HF download, cache, and llama build panels to empty state.
+function resetLLMControlPanels() {
+  if (typeof closeEditor === 'function') closeEditor();
+  if (typeof closeLlamaBuildPanel === 'function') closeLlamaBuildPanel();
+  if (_dlEventSrc) { try { _dlEventSrc.close(); } catch(_){} _dlEventSrc = null; }
+  _dlLastRepo  = '';
+  _dlLastQuant = '';
+  const _set = (id, prop, val) => { const el = document.getElementById(id); if (el) el[prop] = val; };
+  _set('dlRepo', 'value', '');
+  _set('dlInclude', 'value', '');
+  _set('dlChkConfig', 'checked', true);
+  _set('dlChkTemplate', 'checked', true);
+  _set('dlChkMmproj', 'checked', true);
+  _set('dlChkDryRun', 'checked', true);
+  _set('dlLog', 'textContent', 'Download output will appear here...');
+  const _add = document.getElementById('dlAddBtn');
+  if (_add) { _add.style.display = 'none'; _add.innerHTML = ''; }
+  _set('dlBtn', 'disabled', false);
+  if (typeof _setDlRunning === 'function') _setDlRunning(false);
+  _set('cacheRmRepo', 'value', '');
+  _set('cacheLog', 'textContent', 'Cache info will appear here...');
+}
+
 async function startLlamaBuild() {
   {
     const _method = (typeof _llamaBuildMethod !== 'undefined' && _llamaBuildMethod) ? _llamaBuildMethod : '';
