@@ -1105,7 +1105,17 @@ while i < n:
                 else:
                     output.extend(live_blk)
                     if new_subs:
-                        preserved_new_subkeys.append((key, new_subs))
+                        # List-style blocks ('- ' items) only get flagged;
+                        # mapping blocks get their missing keys appended.
+                        is_list = any(ln.lstrip('#').strip().startswith('-')
+                                      for ln in live_blk[1:] + ex_blk[1:])
+                        if is_list:
+                            preserved_new_subkeys.append((key, new_subs))
+                        else:
+                            output.extend([ln for ln in ex_blk[1:]
+                                           for m in [SUBKEY_RE.match(ln)]
+                                           if m and m.group(1) in new_subs])
+                            refreshed_subkeys.append((key, new_subs))
         else:
             output.extend(example_lines[i:ex_end])
             added_keys.append(key)
@@ -1256,7 +1266,7 @@ if added_keys:
 if refreshed_subkeys:
     print("")
     print("  ╔═══ NEW CONFIG OPTIONS ════════════════════════════════════════════╗")
-    print("  ║ +++ surfaced new option(s) inside untouched commented block(s):")
+    print("  ║ +++ added new option(s) to existing block(s):")
     for key, subs in refreshed_subkeys:
         for s in subs:
             print(f"  ║       + {key}.{s}")
