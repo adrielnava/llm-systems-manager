@@ -1899,7 +1899,7 @@ _install_llama_now() {
   if [[ ! -f "$helper" ]]; then
     _err "install helper not found: $helper"; return 1
   fi
-  echo "      → installing llama.cpp (method=$method, backend=$backend) as $USER_ARG …"
+  echo "      → installing llama.cpp (method=$method, backend=$backend) as $USER_ARG …" >&2
   local out
   if ! out="$(_run_as "$USER_ARG" python3 "$helper" \
                 --method "$method" --backend "$backend" --agent-user "$USER_ARG")"; then
@@ -2087,22 +2087,38 @@ _detect_llama() {
     fi
     if $_want_install; then
       local _m="$INSTALL_LLAMA_METHOD" _b="$INSTALL_LLAMA_BACKEND" _newbin="" _v
-      if [[ -t 0 ]] && ! $INSTALL_LLAMA; then
-        read -rp "      Install method (source/release_binary/conda/homebrew) [$_m]: " _v
-        _m="${_v:-$_m}"
-        read -rp "      Backend (cpu/cuda/vulkan/rocm/metal) [$_b]: " _v
-        _b="${_v:-$_b}"
-      fi
-      if _newbin="$(_install_llama_now "$_m" "$_b")"; then
-        detected_bin="$_newbin"
-        detected_dir="$(dirname "$_newbin")"
-        _llama_just_installed=true
-        _llama_installed_method="$_m"
-        found=true
-        _ok "llama.cpp installed → $_newbin"
-      else
-        _err "llama.cpp install failed — continuing; configure or retry manually"
-      fi
+      # Retry loop: on failure, offer another method / quit / skip to manual.
+      while true; do
+        if [[ -t 0 ]] && ! $INSTALL_LLAMA; then
+          read -rp "      Install method (source/release_binary/conda/homebrew) [$_m]: " _v
+          _m="${_v:-$_m}"
+          read -rp "      Backend (cpu/cuda/vulkan/rocm/metal) [$_b]: " _v
+          _b="${_v:-$_b}"
+        fi
+        if _newbin="$(_install_llama_now "$_m" "$_b")"; then
+          detected_bin="$_newbin"
+          detected_dir="$(dirname "$_newbin")"
+          _llama_just_installed=true
+          _llama_installed_method="$_m"
+          found=true
+          _ok "llama.cpp installed → $_newbin"
+          break
+        fi
+        _err "llama.cpp install failed — see the error above"
+        # No TTY or CLI-driven (--install-llama): can't prompt; give up the attempt.
+        if [[ ! -t 0 ]] || $INSTALL_LLAMA; then
+          break
+        fi
+        echo "      A different method may avoid this — 'release_binary' needs no"
+        echo "      compiler/cmake; 'conda'/'homebrew' need that package manager installed."
+        echo "      [r] retry with another method   [q] quit to install prerequisites   [s] skip and configure manually"
+        read -rp "      Choose [r/q/s]: " _v
+        case "$(printf '%s' "$_v" | tr '[:upper:]' '[:lower:]')" in
+          r|retry) continue ;;
+          q|quit)  _err "aborting install — re-run the installer after installing the prerequisites"; exit 1 ;;
+          *)       break ;;
+        esac
+      done
     fi
     if ! $found; then
       if [[ ! -t 0 ]]; then
