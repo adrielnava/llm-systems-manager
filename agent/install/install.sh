@@ -1899,7 +1899,7 @@ _install_llama_now() {
   if [[ ! -f "$helper" ]]; then
     _err "install helper not found: $helper"; return 1
   fi
-  echo "      → installing llama.cpp (method=$method, backend=$backend) as $USER_ARG …"
+  echo "      → installing llama.cpp (method=$method, backend=$backend) as $USER_ARG …" >&2
   local out
   if ! out="$(_run_as "$USER_ARG" python3 "$helper" \
                 --method "$method" --backend "$backend" --agent-user "$USER_ARG")"; then
