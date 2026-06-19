@@ -301,3 +301,22 @@ def test_upgrade_reswaps_on_mode_change_same_content(tmp_path):
     assert res.ok and not res.skipped
     assert set(res.swapped) == {"llama-server"}              # only the mode-drifted file
     assert os.access(dest / "llama-server", os.X_OK)         # exec bit restored
+
+
+def test_upgrade_second_run_same_release_is_noop(tmp_path):
+    # First upgrade swaps everything; re-running the SAME release is a no-op
+    src = _src(tmp_path, marker="v2")
+    (src / "libllama.so.1").write_text("real")
+    os.symlink("libllama.so.1", src / "libllama.so")
+    dest = _dest(tmp_path)
+    res1 = lu.upgrade_in_place(str(src / "llama-server"), str(dest / "llama-server"),
+                               emit=lambda _s: None)
+    assert res1.ok and not res1.skipped and res1.swapped
+    seen = []
+    res2 = lu.upgrade_in_place(str(src / "llama-server"), str(dest / "llama-server"),
+                               emit=seen.append)
+    assert res2.ok and res2.skipped
+    assert res2.swapped == []
+    backups = [p for p in dest.iterdir() if p.name.startswith(".upgrade.bak.")]
+    assert len(backups) == 1                                 # run 2 made no new backup
+    assert any("up to date" in s for s in seen)
