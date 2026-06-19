@@ -47,7 +47,7 @@ def test_source_clone_when_absent(tmp_path, monkeypatch):
     build = str(tmp_path / "src" / "build")
     assert plan.method == "source"
     assert plan.steps[0] == ["git", "clone", "--depth", "1", "--branch", "b1234", "--", li.REPO_URL, src]
-    assert ["cmake", "-S", src, "-B", build, "-DGGML_VULKAN=ON"] in plan.steps
+    assert ["cmake", "-S", src, "-B", build, "-DCMAKE_BUILD_TYPE=Release", "-DGGML_VULKAN=ON"] in plan.steps
     assert ["cmake", "--build", build, "--target", "llama-server", "-j", "6"] in plan.steps
     assert plan.resolve_binary() == str(tmp_path / "src" / "build" / "bin" / "llama-server")
     assert all(s[0] != "sudo" for s in plan.steps)
@@ -128,6 +128,69 @@ def test_source_no_extra_step_when_only_server(tmp_path):
     cfg = _cfg(LLAMA_BUILD_DIR=str(tmp_path / "bld"), LLAMA_BIN=str(install / "llama-server"))
     plan = li.plan("source", {}, cfg)
     assert all(s[0] != "sh" for s in plan.steps)
+
+
+def _configure_step(plan):
+    return next(s for s in plan.steps if s[:1] == ["cmake"] and "-S" in s)
+
+
+def test_source_sets_release_build_type(tmp_path):
+    cfg = _cfg(LLAMA_BUILD_DIR=str(tmp_path))
+    for backend in ("cpu", "cuda", "vulkan", "metal"):
+        plan = li.plan("source", {"backend": backend}, cfg)
+        cfg_step = _configure_step(plan)
+        assert "-DCMAKE_BUILD_TYPE=Release" in cfg_step
+
+
+def test_source_non_rocm_env_empty(tmp_path):
+    cfg = _cfg(LLAMA_BUILD_DIR=str(tmp_path))
+    for backend in ("cpu", "vulkan", "cuda", "metal"):
+        plan = li.plan("source", {"backend": backend}, cfg)
+        assert plan.env == {}
+
+
+def test_source_rocm_populates_hip_env(tmp_path, monkeypatch):
+    monkeypatch.setattr(li.shutil, "which",
+                        lambda name: "/opt/rocm/bin/hipconfig" if name == "hipconfig" else None)
+
+    def fake_run(cmd, **kw):
+        out = "/opt/rocm/llvm/bin" if cmd[1] == "-l" else "/opt/rocm"
+        return types.SimpleNamespace(stdout=out + "\n", returncode=0)
+
+    monkeypatch.setattr(li.subprocess, "run", fake_run)
+    cfg = _cfg(LLAMA_BUILD_DIR=str(tmp_path))
+    plan = li.plan("source", {"backend": "rocm"}, cfg)
+    cfg_step = _configure_step(plan)
+    assert "-DCMAKE_BUILD_TYPE=Release" in cfg_step and "-DGGML_HIP=ON" in cfg_step
+    assert plan.env == {"HIPCXX": "/opt/rocm/llvm/bin/clang", "HIP_PATH": "/opt/rocm"}
+
+
+def test_source_rocm_missing_hipconfig_raises(tmp_path, monkeypatch):
+    monkeypatch.setattr(li.shutil, "which", lambda name: None)
+    cfg = _cfg(LLAMA_BUILD_DIR=str(tmp_path))
+    with pytest.raises(li.InstallError):
+        li.plan("source", {"backend": "rocm"}, cfg)
+
+
+def test_source_rocm_empty_hipconfig_output_raises(tmp_path, monkeypatch):
+    monkeypatch.setattr(li.shutil, "which", lambda name: "/opt/rocm/bin/hipconfig")
+    monkeypatch.setattr(li.subprocess, "run",
+                        lambda cmd, **kw: types.SimpleNamespace(stdout="  \n", returncode=0))
+    cfg = _cfg(LLAMA_BUILD_DIR=str(tmp_path))
+    with pytest.raises(li.InstallError):
+        li.plan("source", {"backend": "rocm"}, cfg)
+
+
+def test_source_rocm_hipconfig_failure_raises(tmp_path, monkeypatch):
+    monkeypatch.setattr(li.shutil, "which", lambda name: "/opt/rocm/bin/hipconfig")
+
+    def boom(cmd, **kw):
+        raise li.subprocess.CalledProcessError(1, cmd)
+
+    monkeypatch.setattr(li.subprocess, "run", boom)
+    cfg = _cfg(LLAMA_BUILD_DIR=str(tmp_path))
+    with pytest.raises(li.InstallError):
+        li.plan("source", {"backend": "rocm"}, cfg)
 
 
 def test_cleanup_source_removes_build_keeps_src(tmp_path):
