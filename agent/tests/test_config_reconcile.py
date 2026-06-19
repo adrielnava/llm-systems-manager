@@ -72,10 +72,61 @@ def test_reconcile_propagates_new_subkeys_into_untouched_block(tmp_path):
     assert "LLAMA_BUILD_OPTS.backup_retain" in stdout
 
 
-def test_reconcile_preserves_operator_activated_block(tmp_path):
+def test_reconcile_adds_missing_subkeys_to_activated_block(tmp_path):
     live = "AGENT_OS: linux\nLLAMA_BUILD_OPTS:\n  backend: cuda\n"
     cfg, stdout = _run(tmp_path, live, _NEW)
-    # operator's activated values are never clobbered
+    # operator's activated value is never clobbered
     assert "backend: cuda" in cfg
-    # the new options are NOT injected into a customized block, but are flagged
+    # sub-keys missing entirely are now added (commented, inert)
+    assert "install_in_place" in cfg
+    assert "backup_retain" in cfg
     assert "LLAMA_BUILD_OPTS.install_in_place" in stdout
+
+
+def test_reconcile_adds_only_missing_subkeys_skips_existing(tmp_path):
+    # parent uncommented with git_ref + backend uncommented and install_in_place
+    # present-but-commented; only the truly-missing sub-keys should be added
+    live = ("AGENT_OS: linux\n"
+            "LLAMA_BUILD_OPTS:\n"
+            "  git_ref: master\n"
+            "  backend: cuda\n"
+            "#   install_in_place: true\n")
+    example = ("AGENT_OS: linux\n"
+               "# LLAMA_BUILD_OPTS:          # per-method knobs\n"
+               "#   git_ref: master          #   source\n"
+               "#   backend: cpu             #   source\n"
+               "#   install_in_place: false  #   in-place upgrade\n"
+               "#   backup_retain: 2         #   how many backups to keep\n")
+    cfg, _ = _run(tmp_path, live, example)
+    assert "git_ref: master" in cfg                  # operator values preserved
+    assert "backend: cuda" in cfg
+    assert "backup_retain" in cfg                    # missing entirely -> added
+    assert cfg.count("install_in_place") == 1        # present commented -> not duplicated
+    assert cfg.count("git_ref") == 1                 # present uncommented -> not re-added
+    assert cfg.count("backend") == 1
+
+
+def test_reconcile_is_idempotent_on_second_run(tmp_path):
+    live = "AGENT_OS: linux\nLLAMA_BUILD_OPTS:\n  backend: cuda\n"
+    cfg1, _ = _run(tmp_path, live, _NEW)
+    cfg2, stdout2 = _run(tmp_path, cfg1, _NEW)
+    assert cfg2 == cfg1                       # second pass changes nothing
+    assert "NEW CONFIG OPTIONS" not in stdout2
+
+
+def test_reconcile_does_not_corrupt_activated_list_block(tmp_path):
+    # operator activated a list-style block; example adds a per-item property —
+    # it must NOT be appended as orphaned lines, only flagged for manual add
+    live = ("AGENT_OS: linux\n"
+            "PROCESS_WATCHLIST:\n"
+            "  - name: llama-server\n"
+            "    match: llama-server\n")
+    example = ("AGENT_OS: linux\n"
+               "# PROCESS_WATCHLIST:\n"
+               "#   - name: llama-server\n"
+               "#     match: llama-server\n"
+               "#     enabled: true\n")
+    cfg, stdout = _run(tmp_path, live, example)
+    assert "  - name: llama-server\n    match: llama-server\n" in cfg   # preserved verbatim
+    assert "enabled" not in cfg                                         # not injected
+    assert "PROCESS_WATCHLIST.enabled" in stdout                        # flagged instead
