@@ -336,6 +336,7 @@ def flatten_release(resolved: str, cfg, emit: "Callable[[str], None]" = lambda _
         d = root / entry
         if d.exists() or d.is_symlink():
             try:
+                # best-effort removal; ignore if it already vanished
                 d.unlink()
             except OSError:
                 pass

@@ -817,6 +817,7 @@ def _llama_run_command(cmd: list, stdin_input: "Optional[bytes]" = None,
                         except Exception:
                             with best_effort("download: kill proc", log=log):
                                 proc.kill()
+                # close pty fds; ignore if already closed
                 if slave_fd != -1:
                     try: os.close(slave_fd)
                     except OSError: pass
@@ -873,11 +874,13 @@ def _llama_log_streamer() -> None:
                 try:
                     _log_queue.put(line, timeout=1)
                 except _queue_lib.Full:
+                    # queue full: evict oldest, then re-enqueue newest
                     try: _log_queue.get_nowait()
                     except _queue_lib.Empty: pass
                     try: _log_queue.put_nowait(line)
                     except _queue_lib.Full: pass
     except Exception as e:
+        # best-effort: surface the error line if there is room
         try: _log_queue.put_nowait(f"[log stream error: {e}]")
         except _queue_lib.Full: pass
     finally:
@@ -1489,6 +1492,7 @@ def llama_hf_trending(authorization: Optional[str] = Header(default=None)) -> di
 
 
 def _bench_put(msg: dict) -> None:
+    """Bounded enqueue; drops oldest on overflow."""
     try:
         _bench_queue.put_nowait(msg)
     except _queue_lib.Full:
@@ -1743,12 +1747,14 @@ def llama_bench_cancel(authorization: Optional[str] = Header(default=None)) -> d
         return res
     try:
         if pgid is not None:
+            # tolerate the group already being gone
             try: os.killpg(pgid, signal.SIGTERM)
             except ProcessLookupError: pass
         try: proc.wait(timeout=3)
         except subprocess.TimeoutExpired:
             if pgid is not None:
                 try:
+                    # force-kill; tolerate the group already being gone
                     os.killpg(pgid, signal.SIGKILL)
                 except ProcessLookupError:
                     pass
@@ -1787,6 +1793,7 @@ def llama_bench_perf_mode(body: dict, authorization: Optional[str] = Header(defa
 
 
 def _autotune_put(msg: dict) -> None:
+    """Bounded enqueue; drops oldest on overflow."""
     try:
         _autotune_queue.put_nowait(msg)
     except _queue_lib.Full:
@@ -1930,11 +1937,13 @@ def _autotune_run_iter(model_id: str, fitt_mb: int, optional_params: dict,
                 # echo the requested default before -fitt has adjusted it.
                 mm = _AT_NCTX_RE.search(line)
                 if mm:
+                    # ignore an unparseable counter; keep the prior value
                     try: ctx_seq = int(mm.group(1))
                     except ValueError: pass
                 else:
                     mm2 = _AT_NCTX_FALLBACK_RE.search(line)
                     if mm2:
+                        # ignore an unparseable counter; keep the prior value
                         try: ctx_fallback = int(mm2.group(1))
                         except ValueError: pass
                 # Detect whether llama-server's auto-fit actually trimmed
@@ -1961,6 +1970,7 @@ def _autotune_run_iter(model_id: str, fitt_mb: int, optional_params: dict,
     # SIGTERM triggers llama-server's clean shutdown + post-load memory breakdown.
     pgid = _autotune_pgid
     if pgid is not None:
+        # tolerate the group already being gone
         try: os.killpg(pgid, signal.SIGTERM)
         except ProcessLookupError: pass
         except Exception as e:
@@ -1978,11 +1988,13 @@ def _autotune_run_iter(model_id: str, fitt_mb: int, optional_params: dict,
                 _autotune_put({"type": "line", "model_id": model_id, "text": line})
                 mm = _AT_NCTX_RE.search(line)
                 if mm:
+                    # ignore an unparseable counter; keep the prior value
                     try: ctx_seq = int(mm.group(1))
                     except ValueError: pass
                 else:
                     mm2 = _AT_NCTX_FALLBACK_RE.search(line)
                     if mm2:
+                        # ignore an unparseable counter; keep the prior value
                         try: ctx_fallback = int(mm2.group(1))
                         except ValueError: pass
 
@@ -1991,6 +2003,7 @@ def _autotune_run_iter(model_id: str, fitt_mb: int, optional_params: dict,
     except subprocess.TimeoutExpired:
         if pgid is not None:
             try:
+                # force-kill; tolerate the group already being gone
                 os.killpg(pgid, signal.SIGKILL)
             except ProcessLookupError:
                 pass
@@ -2452,12 +2465,14 @@ def llama_autotune_cancel(authorization: Optional[str] = Header(default=None)) -
         return res
     try:
         if pgid is not None:
+            # tolerate the group already being gone
             try: os.killpg(pgid, signal.SIGTERM)
             except ProcessLookupError: pass
         try: proc.wait(timeout=3)
         except subprocess.TimeoutExpired:
             if pgid is not None:
                 try:
+                    # force-kill; tolerate the group already being gone
                     os.killpg(pgid, signal.SIGKILL)
                 except ProcessLookupError:
                     pass
