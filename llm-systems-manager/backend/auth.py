@@ -49,7 +49,6 @@ __all__ = [
     "effective_role",
     "admin_ip_ok",
     "write_toml_auth_mode",
-    "MIN_ADMIN_PASSWORD",
     "DEFAULT_AUTH_USER",
     "DEFAULT_AUTH_PASSWORD",
     "AUTH_OPEN_PATHS",
@@ -58,7 +57,6 @@ __all__ = [
 ]
 
 # ── Public constants ──────────────────────────────────────────────────
-MIN_ADMIN_PASSWORD = 8
 DEFAULT_AUTH_USER = "llmadmin"
 DEFAULT_AUTH_PASSWORD = "llmadmin"
 
