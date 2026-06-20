@@ -13,14 +13,11 @@ guessable token.
 """
 
 import hmac
-import logging
 from typing import Optional
 
 from fastapi import Header, HTTPException
 
 from config.unified_config import settings
-
-logger = logging.getLogger(__name__)
 
 _UNSET = {"", "REPLACE_ME"}
 
