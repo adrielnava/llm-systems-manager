@@ -892,9 +892,8 @@ async function loadHistory() {
 }
 
 // Backfill manager + alarm-engine self-monitor charts from the alarm
-// engine catalog so the operator sees the last 60 min instead of an
-// empty pane until a probe lands. Fires once at startup. Each metric is
-// fetched in parallel; failures are silent (chart just starts empty).
+// engine catalog so the operator sees the last 60 min instead of an empty
+// pane. Fired at startup and again on manager-tab entry until data lands.
 async function loadManagerPerfHistory() {
   // Scope to the manager's own host by agent id (resolved server-side via the
   // alarm proxy); no id → unfiltered, fine since these series are single-host
@@ -931,14 +930,21 @@ async function loadManagerPerfHistory() {
     return [...map.entries()].sort(([a], [b]) => new Date(a) - new Date(b));
   };
 
+  // Returns true once either chart is backfilled, so the caller can retry on a
+  // transient empty response instead of latching a failed one-shot (#131).
+  let filled = false;
   // Manager Perf (2 series)
   if (typeof mgrPerfChart !== 'undefined' && mgrPerfChart) {
     const [api, hist] = await Promise.all([
       fetchPoints('manager_api_latency_ms'),
       fetchPoints('manager_history_latency_ms'),
     ]);
-    _clearChart(mgrPerfChart);  // discard any racing live point (#137)
-    for (const [ts, vals] of zipByTs([api, hist])) pushMulti(mgrPerfChart, ts, vals);
+    const rows = zipByTs([api, hist]);
+    if (rows.length) {
+      _clearChart(mgrPerfChart);  // discard any racing live point (#137)
+      for (const [ts, vals] of rows) pushMulti(mgrPerfChart, ts, vals);
+      filled = true;
+    }
   }
 
   // AE + Influx Perf (7 series — keep order in sync with pushMulti call
@@ -950,9 +956,14 @@ async function loadManagerPerfHistory() {
       'influx_write_latency_ms', 'influx_query_5m_latency_ms', 'influx_query_24h_latency_ms',
     ];
     const series = await Promise.all(names.map(fetchPoints));
-    _clearChart(aePerfChart);  // discard any racing live point (#137)
-    for (const [ts, vals] of zipByTs(series)) pushMulti(aePerfChart, ts, vals);
+    const rows = zipByTs(series);
+    if (rows.length) {
+      _clearChart(aePerfChart);  // discard any racing live point (#137)
+      for (const [ts, vals] of rows) pushMulti(aePerfChart, ts, vals);
+      filled = true;
+    }
   }
+  return filled;
 }
 
 // Backfill LM Studio host charts (CPU/RAM/Net) from the selected LMS agent's
