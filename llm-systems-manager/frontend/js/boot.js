@@ -43,6 +43,10 @@ document.addEventListener('DOMContentLoaded', () => {
 // ---------------------------------------------------------------------------
 const _subTabState = { dashboard: 'llamacpp', llm: 'llamacpp', admin: 'agents' };
 
+// Latched true once the manager perf sparklines have real history, so a failed
+// or empty boot-time backfill retries on manager-tab entry (#131).
+let _mgrPerfBackfilled = false;
+
 const _SUB_TAB_MAP = {
   dashboard: { tabId: 'dashboardTab', prefix: 'dash',  subs: ['llamacpp','lmstudio','openclaw','manager'] },
   llm:       { tabId: 'llmTab',       prefix: 'llm',   subs: ['llamacpp','lmstudio'] },
@@ -100,6 +104,11 @@ function switchSubTab(parent, sub) {
     fetchServicesAndInflux();
     fetchManagerAgentsCard();
     fetchManagerStreamsCard();
+    // Retry the perf-sparkline backfill on entry until it lands; the boot-time
+    // shot can run before the alarm engine has history (#131).
+    if (!_mgrPerfBackfilled && typeof loadManagerPerfHistory === 'function') {
+      loadManagerPerfHistory().then(ok => { if (ok) _mgrPerfBackfilled = true; });
+    }
   }
   if (parent === 'admin' && sub === 'users') {
     if (typeof adminUsersLoad === 'function') adminUsersLoad();
@@ -121,10 +130,11 @@ function switchSubTab(parent, sub) {
   // appends bucket to the same resolution grid (#129).
   if (typeof syncInterval === 'function') await syncInterval();
   await loadHistory();
-  // Independent backfills — fired in parallel so a slow alarm-engine
-  // response doesn't serialize the entire startup. Each fails silently
-  // if its corresponding host isn't injected (no llama / lms agent yet).
-  Promise.all([loadLmsHistory(), loadManagerPerfHistory()]).catch(() => {});
+  // Independent backfills — fired async so a slow alarm-engine response doesn't
+  // serialize startup. Each fails silently if its host isn't injected yet; the
+  // manager perf shot latches _mgrPerfBackfilled so a miss retries on entry (#131).
+  loadLmsHistory().catch(() => {});
+  loadManagerPerfHistory().then(ok => { if (ok) _mgrPerfBackfilled = true; }).catch(() => {});
   await checkConfig();
   pollServerState();
   fetchMetrics();
