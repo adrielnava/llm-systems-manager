@@ -2,6 +2,7 @@
 from __future__ import annotations
 
 import io
+import json
 import os
 import types
 import pytest
@@ -317,6 +318,49 @@ def test_flatten_then_cleanup_leaves_flat_binaries_and_removes_extract(tmp_path)
     assert (tmp_path / "libllama.so").read_text() == "lib"
     assert not (tmp_path / "release").exists()
     assert not (tmp_path / "release.download").exists()
+
+
+def test_flatten_release_move_failure_names_file(tmp_path, monkeypatch):
+    nested = tmp_path / "release" / "build" / "bin"
+    nested.mkdir(parents=True)
+    (nested / "llama-server").write_text("bin")
+    cfg = _cfg(LLAMA_BUILD_DIR=str(tmp_path))
+
+    def boom(src, dst):
+        raise OSError("disk full")
+
+    monkeypatch.setattr(li.shutil, "move", boom)
+    with pytest.raises(OSError) as ei:
+        li.flatten_release(str(nested / "llama-server"), cfg)
+    assert "llama-server" in str(ei.value) and "disk full" in str(ei.value)
+
+
+def test_resolve_release_asset_rejects_dotdot_version():
+    for bad in ("..", "a..b", "v1..2"):
+        with pytest.raises(li.InstallError):
+            li._resolve_release_asset(bad)
+
+
+def test_resolve_release_asset_allows_dotted_version(monkeypatch):
+    captured = {}
+
+    class _Resp:
+        def __enter__(self): return self
+        def __exit__(self, *a): return False
+        def read(self):
+            return json.dumps({"assets": [
+                {"name": "llama-b1-bin-ubuntu-x64.tar.gz",
+                 "browser_download_url": "https://example.com/llama-b1-bin-ubuntu-x64.tar.gz"}]}).encode()
+
+    def fake_urlopen(req, timeout=0):
+        captured["url"] = req.full_url
+        return _Resp()
+
+    monkeypatch.setattr(li.urllib.request, "urlopen", fake_urlopen)
+    monkeypatch.setattr(li, "_asset_match_tokens", lambda: ["ubuntu", "x64"])
+    dl = li._resolve_release_asset("v1.2.3")
+    assert dl == "https://example.com/llama-b1-bin-ubuntu-x64.tar.gz"
+    assert captured["url"].endswith("/tags/v1.2.3")
 
 
 def _assets(*names):

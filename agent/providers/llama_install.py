@@ -262,7 +262,8 @@ def _select_asset(assets: list, tokens: list, variant_tokens: tuple) -> "str | N
 
 
 def _resolve_release_asset(version: str, backend: str = "cpu") -> str:
-    if version not in ("", "latest") and not re.fullmatch(r"[A-Za-z0-9._-]+", version):
+    if version not in ("", "latest") and (
+            not re.fullmatch(r"[A-Za-z0-9._-]+", version) or ".." in version):
         raise InstallError(f"invalid release version {version!r}")
     url = f"{_RELEASES_API}/latest" if version in ("", "latest") else f"{_RELEASES_API}/tags/{version}"
     try:
@@ -340,7 +341,10 @@ def flatten_release(resolved: str, cfg, emit: "Callable[[str], None]" = lambda _
                 d.unlink()
             except OSError:
                 pass
-        shutil.move(str(s), str(d))
+        try:
+            shutil.move(str(s), str(d))
+        except OSError as e:
+            raise OSError(f"failed to move release file {s} -> {d}: {e}") from e
         moved += 1
     if moved:
         emit(f"[info] flattened {moved} release file(s) to {root}")
