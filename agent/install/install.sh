@@ -483,6 +483,7 @@ _compute_required_install_files() {
     "$SRC_DIR/_best_effort.py"
     "$SRC_DIR/agent_context.py"
     "$SRC_DIR/stream_pool.py"
+    "$SRC_DIR/unified_config_reader.py"
     "$SRC_DIR/agent_config.yaml.example"
     "$TMPL_DIR/requirements.txt"
     "$TMPL_DIR/requirements-monitor.txt"
@@ -935,13 +936,15 @@ if $DO_UPDATE; then
   $SUDO cp "$SRC_DIR/_best_effort.py"             "$INSTALL_DIR/_best_effort.py"
   $SUDO cp "$SRC_DIR/agent_context.py"            "$INSTALL_DIR/agent_context.py"
   $SUDO cp "$SRC_DIR/stream_pool.py"              "$INSTALL_DIR/stream_pool.py"
+  $SUDO cp "$SRC_DIR/unified_config_reader.py"    "$INSTALL_DIR/unified_config_reader.py"
   $SUDO chown "$USER_ARG:$USER_GROUP" \
     "$INSTALL_DIR/llm-systems-agent.py" \
     "$INSTALL_DIR/buffered_metric_client.py" \
     "$INSTALL_DIR/_utils.py" \
     "$INSTALL_DIR/_best_effort.py" \
     "$INSTALL_DIR/agent_context.py" \
-    "$INSTALL_DIR/stream_pool.py"
+    "$INSTALL_DIR/stream_pool.py" \
+    "$INSTALL_DIR/unified_config_reader.py"
   _ok "agent code refreshed"
 
   # 2. Refresh venv against current requirements (no-op if already satisfied)
@@ -3181,13 +3184,15 @@ $SUDO cp "$SRC_DIR/_utils.py"                 "$INSTALL_DIR/"
 $SUDO cp "$SRC_DIR/_best_effort.py"           "$INSTALL_DIR/"
 $SUDO cp "$SRC_DIR/agent_context.py"          "$INSTALL_DIR/"
 $SUDO cp "$SRC_DIR/stream_pool.py"            "$INSTALL_DIR/"
+$SUDO cp "$SRC_DIR/unified_config_reader.py"  "$INSTALL_DIR/"
 $SUDO chown "$USER_ARG:$USER_GROUP" \
   "$INSTALL_DIR/llm-systems-agent.py" \
   "$INSTALL_DIR/buffered_metric_client.py" \
   "$INSTALL_DIR/_utils.py" \
   "$INSTALL_DIR/_best_effort.py" \
   "$INSTALL_DIR/stream_pool.py" \
-  "$INSTALL_DIR/agent_context.py"
+  "$INSTALL_DIR/agent_context.py" \
+  "$INSTALL_DIR/unified_config_reader.py"
 _ok "agent code installed to $INSTALL_DIR"
 
 # 3. Drop config from example if missing
