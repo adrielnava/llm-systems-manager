@@ -29,6 +29,7 @@ metrics_rollup_bucket = "alarm_engine_metrics_rollup"
 
 [influxdb.tokens]
 metrics = "secret-token"
+metrics_rollup = "rollup-token"
 """
 
 
@@ -43,7 +44,17 @@ def test_read_full(tmp_path):
         "metrics_bucket": "alarm_engine_metrics",
         "metrics_rollup_bucket": "alarm_engine_metrics_rollup",
         "token": "secret-token",
+        "rollup_token": "rollup-token",
     }
+
+
+def test_rollup_token_absent_is_empty(tmp_path):
+    p = tmp_path / "llm-systems.toml"
+    p.write_text(
+        '[influxdb]\nhost="h"\nmetrics_bucket="b"\n[influxdb.tokens]\nmetrics="t"\n'
+    )
+    cfg = ucr.read_influx_settings(str(p))
+    assert cfg["rollup_token"] == ""
 
 
 def test_missing_file_returns_none(tmp_path):

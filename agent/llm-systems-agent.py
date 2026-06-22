@@ -60,7 +60,7 @@ except ImportError:
             os.chmod(tmp, mode)
         tmp.replace(p)
 
-VERSION = "v2026.06.22-5"
+VERSION = "v2026.06.22-6"
 
 
 def _detect_install_dir() -> str:
@@ -1280,6 +1280,7 @@ def _probe_influxdb() -> dict[str, Optional[float]]:
     bucket = cfg["metrics_bucket"]
     rollup_bucket = cfg["metrics_rollup_bucket"]
     token = cfg["token"]
+    rollup_token = cfg["rollup_token"]
 
     if not (host and token):
         return out
@@ -1327,18 +1328,33 @@ def _probe_influxdb() -> dict[str, Optional[float]]:
         except Exception as e:
             logger.debug("influx 5m query probe failed: %s", e)
 
+        # 24h reads the rollup bucket via its own scoped token; with no rollup
+        # token, fall back to the raw bucket (matches the alarm engine).
+        use_rollup = bool(rollup_token) and bool(rollup_bucket) and rollup_bucket != bucket
+        q24_bucket = rollup_bucket if use_rollup else bucket
         flux_24h = (
-            f'from(bucket: "{rollup_bucket}") '
+            f'from(bucket: "{q24_bucket}") '
             f'|> range(start: -24h) '
             f'|> filter(fn: (r) => r._measurement == "metrics") '
             f'|> limit(n: 10)'
         )
+        rollup_client = None
         try:
+            if use_rollup:
+                rollup_client = InfluxDBClient(url=url, token=rollup_token, org=org,
+                                               timeout=int(CONFIG.META_PERF_TIMEOUT_S * 1000))
+                q24_api = rollup_client.query_api()
+            else:
+                q24_api = qapi
             t0 = time.perf_counter()
-            _ = qapi.query(flux_24h)
+            _ = q24_api.query(flux_24h)
             out["influx_query_24h_latency_ms"] = (time.perf_counter() - t0) * 1000.0
         except Exception as e:
             logger.debug("influx 24h query probe failed: %s", e)
+        finally:
+            if rollup_client is not None:
+                with best_effort("influx probe: close rollup client"):
+                    rollup_client.close()
     finally:
         with best_effort("influx probe: close client"):
             client.close()

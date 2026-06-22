@@ -47,4 +47,5 @@ def read_influx_settings(path_override: str = "") -> Optional[dict]:
         "metrics_bucket": metrics_bucket,
         "metrics_rollup_bucket": influx.get("metrics_rollup_bucket") or metrics_bucket,
         "token": tokens.get("metrics", "") or "",
+        "rollup_token": tokens.get("metrics_rollup", "") or "",
     }
