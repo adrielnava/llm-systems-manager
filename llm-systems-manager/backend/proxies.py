@@ -147,7 +147,7 @@ def thread_pumped(upstream, path, *, keepalive_s: float = _STREAM_KEEPALIVE_S,
                     except _queue_lib.Full:
                         continue
         except requests.exceptions.RequestException as e:
-            log.info("proxy SSE %s upstream idle/closed: %s", path, type(e).__name__)
+            log.debug("proxy SSE %s upstream idle/closed: %s", path, type(e).__name__)
         except Exception as e:
             # `stop` is set before the generator closes upstream; an exception
             # after that is the benign teardown race (urllib3 reads a nulled fp).
@@ -480,7 +480,7 @@ def _proxy_llmchat(path: str, base: str):
                      ("host", "content-length", "transfer-encoding")},
             data=flask_request.get_data(),
             allow_redirects=False,
-            timeout=15,
+            timeout=(5, 300),  # (connect, read): long read for keepalive-less SSE
             stream=True,
         )
         headers = []
