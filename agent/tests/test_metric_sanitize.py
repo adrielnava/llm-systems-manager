@@ -78,3 +78,22 @@ def test_enqueue_does_not_mutate_caller_sample(tmp_path):
     client.enqueue(sample)
     # caller's original dict is untouched; only the stored copy is scrubbed
     assert sample["v"] == float("inf")
+
+
+def test_sanitize_non_finite_makes_llama_push_payload_serializable():
+    # Manager host-metrics push serializes the llama sample with the strict encoder.
+    sys_metric = {
+        "cpu_total": 12.0,
+        "llama": {
+            "state": "awake",
+            "tokens_per_second": float("inf"),       # Prometheus +Inf rate
+            "prompt_tokens_per_second": float("nan"),
+            "kv_cache_usage_ratio": float("inf"),    # 0-division ratio
+        },
+    }
+    scrubbed = bmc._sanitize_non_finite({"provider": "llama", "sample": sys_metric})
+    assert scrubbed["sample"]["llama"]["tokens_per_second"] is None
+    assert scrubbed["sample"]["llama"]["prompt_tokens_per_second"] is None
+    assert scrubbed["sample"]["llama"]["kv_cache_usage_ratio"] is None
+    assert scrubbed["sample"]["cpu_total"] == 12.0
+    json.dumps(scrubbed, allow_nan=False)
