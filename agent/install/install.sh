@@ -628,6 +628,33 @@ _ensure_hf_cli() {
   fi
 }
 
+# _effective_flag EXPLICIT CLI_VALUE CONFIG_KEY
+#   Echo true/false: an explicitly-passed CLI flag wins, else deployed config.
+_effective_flag() {
+  local explicit="$1" cli="$2" key="$3" val
+  if [[ "$explicit" == "true" ]]; then
+    printf '%s' "$cli"
+    return 0
+  fi
+  val="$(_yaml_scalar "$INSTALL_DIR/agent_config.yaml" "$key")"
+  if [[ "$(printf '%s' "$val" | tr '[:upper:]' '[:lower:]')" == "true" ]]; then
+    printf 'true'
+  else
+    printf 'false'
+  fi
+}
+
+# _pip_install_if_enabled ENABLED REQFILE [LABEL]
+#   pip-install REQFILE into the agent venv when ENABLED is "true".
+_pip_install_if_enabled() {
+  local enabled="$1" reqfile="$2" label="${3:-}"
+  if [[ "$enabled" == "true" ]]; then
+    _pip_filter _run_as "$USER_ARG" "$INSTALL_DIR/venv/bin/pip" install --quiet --no-cache-dir -r "$reqfile"
+    if [[ -n "$label" ]]; then echo "  ✓ $label"; fi
+  fi
+  return 0
+}
+
 # _fetch_agent_into DEST USER
 #   Download agent/ as a tarball from the manager (GET /api/agent-tarball,
 #   bearer-auth with the agent's registry token), extract only the agent/
@@ -969,15 +996,11 @@ if $DO_UPDATE; then
   _pip_filter _run_as "$USER_ARG" "$INSTALL_DIR/venv/bin/pip" install --quiet --no-cache-dir -r "$TMPL_DIR/requirements.txt"
   echo "  ✓ requirements installed"
 
-  _monitor_alarm_on="$(_yaml_scalar "$INSTALL_DIR/agent_config.yaml" MONITOR_ALARM_ENGINE_ENABLED)"
-  if [[ "$(printf '%s' "$_monitor_alarm_on" | tr '[:upper:]' '[:lower:]')" == "true" ]]; then
-    _pip_filter _run_as "$USER_ARG" "$INSTALL_DIR/venv/bin/pip" install --quiet --no-cache-dir -r "$TMPL_DIR/requirements-monitor.txt"
-    echo "  ✓ monitor extras (influxdb-client) installed"
-  fi
+  _monitor_alarm_on="$(_effective_flag "$MONITOR_ALARM_FLAG_EXPLICIT" "$ENABLE_MONITOR_ALARM" MONITOR_ALARM_ENGINE_ENABLED)"
+  _pip_install_if_enabled "$_monitor_alarm_on" "$TMPL_DIR/requirements-monitor.txt" "monitor extras (influxdb-client) installed"
 
-  _hf_llama_on="$(_yaml_scalar "$INSTALL_DIR/agent_config.yaml" LLAMA_ENABLED)"
-  # tr, not ${,,} — macOS bash 3.2 lacks case-modification expansion.
-  if [[ "$(printf '%s' "$_hf_llama_on" | tr '[:upper:]' '[:lower:]')" == "true" ]]; then
+  _hf_llama_on="$(_effective_flag "$LLAMA_FLAG_EXPLICIT" "$ENABLE_LLAMA" LLAMA_ENABLED)"
+  if [[ "$_hf_llama_on" == "true" ]]; then
     _ensure_hf_cli "$USER_ARG" "$USER_HOME"
   fi
 
@@ -3446,9 +3469,7 @@ _run_as "$USER_ARG" "$PYTHON3" -m venv "$INSTALL_DIR/venv"
 _pip_filter _run_as "$USER_ARG" "$INSTALL_DIR/venv/bin/pip" install --quiet --no-cache-dir --upgrade pip
 _pip_filter _run_as "$USER_ARG" "$INSTALL_DIR/venv/bin/pip" install --quiet --no-cache-dir -r "$TMPL_DIR/requirements.txt"
 
-if $ENABLE_MONITOR_ALARM; then
-  _pip_filter _run_as "$USER_ARG" "$INSTALL_DIR/venv/bin/pip" install --quiet --no-cache-dir -r "$TMPL_DIR/requirements-monitor.txt"
-fi
+_pip_install_if_enabled "$ENABLE_MONITOR_ALARM" "$TMPL_DIR/requirements-monitor.txt" "monitor extras (influxdb-client) installed"
 
 if $ENABLE_LLAMA; then
   _ensure_hf_cli "$USER_ARG" "$USER_HOME"
