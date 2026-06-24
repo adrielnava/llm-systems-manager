@@ -60,7 +60,7 @@ except ImportError:
             os.chmod(tmp, mode)
         tmp.replace(p)
 
-VERSION = "v2026.06.23-1"
+VERSION = "v2026.06.23-2"
 
 
 def _detect_install_dir() -> str:
@@ -1974,7 +1974,8 @@ def _build_metric_sample() -> dict[str, Any]:
         mp = _build_meta_perf_block()
         if mp:
             sample["manager_self_monitor"] = mp
-    return sample
+    # Scrub non-finite floats (inf/nan → None) before the sample is enqueued or pushed.
+    return bmc._sanitize_non_finite(sample)
 
 
 def _push_dashboard_payload(sample: dict[str, Any]) -> None:

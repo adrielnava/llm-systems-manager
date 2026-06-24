@@ -6,6 +6,7 @@ import asyncio
 import configparser
 import json
 import logging
+import math
 import os
 import pwd
 import queue as _queue_lib
@@ -189,8 +190,10 @@ def llama_get_state() -> str:
 
 
 def _llama_metric_val(line: str) -> "float | None":
+    # Prometheus emits +Inf/NaN for some rates; treat non-finite as no value.
     try:
-        return float(line.split()[-1])
+        v = float(line.split()[-1])
+        return v if math.isfinite(v) else None
     except Exception:
         return None
 
