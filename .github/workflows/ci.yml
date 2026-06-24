@@ -88,6 +88,29 @@ jobs:
         working-directory: llm-systems-manager
         run: venv/bin/python -m pytest -v
 
+  agent-test:
+    name: pytest (agent)
+    runs-on: ubuntu-latest
+    timeout-minutes: 5
+    # The agent suite loads leaf modules with stubbed deps (agent/tests/
+    # conftest.py + per-test importlib loads), so it needs only pytest — no
+    # requirements install and no config loader materialisation.
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Set up Python
+        uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
+          cache: pip
+
+      - name: Install pytest
+        run: pip install pytest
+
+      - name: Run agent tests
+        working-directory: agent
+        run: python -m pytest -v
+
   lint:
     name: ruff
     runs-on: ubuntu-latest
