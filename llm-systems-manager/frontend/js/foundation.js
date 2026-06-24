@@ -177,6 +177,7 @@ async function loadLayout() {
     if (!layout.hiddenOverall)   layout.hiddenOverall   = [];
     if (!layout.lmsHidden)       layout.lmsHidden       = [];
     if (!layout.managerHidden)   layout.managerHidden   = [];
+    if (!layout.hiddenByAgent || typeof layout.hiddenByAgent !== 'object') layout.hiddenByAgent = {};
     if (!layout.managerOrder)    layout.managerOrder    = [];
     if (!layout.overallBorrowed) layout.overallBorrowed = [];
     if (!layout.overallOrder)    layout.overallOrder    = [];
@@ -212,6 +213,13 @@ function _migrateLegacyCardIds(lay) {
   swap(lay.lmsOrder); swap(lay.lmsHidden);
   swap(lay.managerOrder); swap(lay.managerHidden);
   swap(lay.overallOrder); swap(lay.overallBorrowed); swap(lay.hiddenOverall);
+  // Per-agent hidden buckets: hiddenByAgent[provider][agentId] = [cardId...].
+  if (lay.hiddenByAgent && typeof lay.hiddenByAgent === 'object') {
+    for (const prov in lay.hiddenByAgent) {
+      const byAgent = lay.hiddenByAgent[prov];
+      if (byAgent && typeof byAgent === 'object') for (const aid in byAgent) swap(byAgent[aid]);
+    }
+  }
   if (lay.cardSizes && typeof lay.cardSizes === 'object') {
     for (const oldId in _LEGACY_CARD_RENAMES) {
       if (oldId in lay.cardSizes) {
@@ -268,6 +276,11 @@ async function _loadAgentsByProvider() {
       }
     });
     _renderAgentPickers();
+    // Selection resolved — apply each provider's per-agent card visibility.
+    if (typeof _applyHiddenForGrid === 'function') {
+      _applyHiddenForGrid('cardGrid', 'hidden');
+      _applyHiddenForGrid('lmsCardGrid', 'lmsHidden');
+    }
   } catch (_) {}
 }
 
@@ -306,6 +319,12 @@ function _selectAgent(provider, agentId) {
     try { saveLayout(); } catch (_) {}
   }
   _renderAgentPickers();
+  // Re-apply this provider's per-agent card visibility for the new selection,
+  // and refresh the settings chips if the panel is open.
+  if (provider === 'llama')     _applyHiddenForGrid('cardGrid', 'hidden');
+  else if (provider === 'lms')  _applyHiddenForGrid('lmsCardGrid', 'lmsHidden');
+  if (typeof renderSettingsPanel === 'function'
+      && document.getElementById('settingsOverlay')?.classList.contains('open')) renderSettingsPanel();
   // Reset the editor/download/cache/build panels before loading the new agent.
   if (typeof resetLLMControlPanels === 'function') resetLLMControlPanels();
   // Clear the disk-usage bar list (guarded render keeps its last value when a
@@ -516,6 +535,29 @@ function _retintCharts() {
 // Apply chart defaults once at load before any Chart() is instantiated below.
 _themeChartDefaults();
 
+// Effective hidden-card list for a surface — per-agent for the llama.cpp/LMS
+// dashboards, global elsewhere. Falls back to the global list if the lib is absent.
+function _hiddenList(hiddenKey) {
+  const lib = window.LMLayout;
+  if (!lib) {
+    if (!Array.isArray(layout[hiddenKey])) layout[hiddenKey] = [];
+    return layout[hiddenKey];
+  }
+  const prov = lib.PER_AGENT_HIDDEN[hiddenKey] || null;
+  const agentId = prov ? _selectedAgent(prov) : null;
+  return lib.resolveHiddenList(layout, hiddenKey, agentId);
+}
+
+// Apply a grid's card visibility from its (possibly per-agent) hidden list.
+function _applyHiddenForGrid(gridId, hiddenKey) {
+  const grid = document.getElementById(gridId);
+  if (!grid) return;
+  const hidden = _hiddenList(hiddenKey);
+  grid.querySelectorAll('.card').forEach(c => {
+    c.style.display = hidden.includes(c.dataset.card) ? 'none' : '';
+  });
+}
+
 function applyLayout() {
   const grid = document.getElementById('cardGrid');
   const cards = [...grid.querySelectorAll('.card')];
@@ -531,10 +573,8 @@ function applyLayout() {
     ordered.forEach(c => grid.appendChild(c));
   }
 
-  // Apply visibility — Dashboard/llama.cpp cards
-  cards.forEach(c => {
-    c.style.display = layout.hidden.includes(c.dataset.card) ? 'none' : '';
-  });
+  // Apply visibility — Dashboard/llama.cpp cards (per selected agent)
+  _applyHiddenForGrid('cardGrid', 'hidden');
 
   // Apply visibility — LLM Overall cards
   const hiddenOv = layout.hiddenOverall || [];
@@ -542,11 +582,8 @@ function applyLayout() {
     c.style.display = hiddenOv.includes(c.dataset.card) ? 'none' : '';
   });
 
-  // Apply visibility — LMS dashboard cards
-  const hiddenLms = layout.lmsHidden || [];
-  document.querySelectorAll('#lmsCardGrid .card').forEach(c => {
-    c.style.display = hiddenLms.includes(c.dataset.card) ? 'none' : '';
-  });
+  // Apply visibility — LMS dashboard cards (per selected agent)
+  _applyHiddenForGrid('lmsCardGrid', 'lmsHidden');
 
   // Apply visibility — Manager dashboard cards
   const hiddenMgr = layout.managerHidden || [];
@@ -839,17 +876,6 @@ function applyManagerLayout(savedOrder) {
   ordered.forEach(c => grid.appendChild(c));
 }
 
-function toggleCard(cardId, visible) {
-  if (visible) {
-    layout.hidden = layout.hidden.filter(id => id !== cardId);
-  } else {
-    if (!layout.hidden.includes(cardId)) layout.hidden.push(cardId);
-  }
-  const card = document.querySelector(`[data-card="${cardId}"]`);
-  if (card) card.style.display = visible ? '' : 'none';
-  saveLayout();
-}
-
 // ---------------------------------------------------------------------------
 // Settings panel — compact chips + grid layout selector
 // ---------------------------------------------------------------------------
@@ -859,12 +885,10 @@ function toggleCard(cardId, visible) {
   if (CARD_LABELS_OVERALL[cardId]) hiddenKey = 'hiddenOverall';
   else if (CARD_LABELS_LMS[cardId]) hiddenKey = 'lmsHidden';
   else if (CARD_LABELS_MANAGER[cardId]) hiddenKey = 'managerHidden';
-  if (!layout[hiddenKey]) layout[hiddenKey] = [];
-  if (visible) {
-    layout[hiddenKey] = layout[hiddenKey].filter(id => id !== cardId);
-  } else {
-    if (!layout[hiddenKey].includes(cardId)) layout[hiddenKey].push(cardId);
-  }
+  const list = _hiddenList(hiddenKey);
+  const idx = list.indexOf(cardId);
+  if (visible) { if (idx !== -1) list.splice(idx, 1); }
+  else if (idx === -1) { list.push(cardId); }
   const card = document.querySelector(`[data-card="${cardId}"]`);
   if (card) card.style.display = visible ? '' : 'none';
   saveLayout();
@@ -965,7 +989,7 @@ function renderSettingsPanel() {
   }
   if (title) title.textContent = 'Settings — ' + label;
 
-  const hidden  = layout[hiddenKey] || [];
+  const hidden  = _hiddenList(hiddenKey);
   const curCols = layout[colsKey]   || 3;
 
   // Build chips HTML — labels prefer live hardware names over the static map
@@ -1090,6 +1114,12 @@ async function resetCurrentTabLayout() {
   if (!ok) return;
   // Mutate the in-memory layout, then POST the whole thing back.
   layout[scope.hidden] = [];
+  // Per-agent surfaces: also clear the selected agent's own hidden set.
+  const _resetProv = (window.LMLayout && LMLayout.PER_AGENT_HIDDEN[scope.hidden]) || null;
+  if (_resetProv && layout.hiddenByAgent && layout.hiddenByAgent[_resetProv]) {
+    const _aid = _selectedAgent(_resetProv);
+    if (_aid) delete layout.hiddenByAgent[_resetProv][_aid];
+  }
   layout[scope.order]  = [];
   delete layout[scope.cols];
   if (scope.borrowed) layout[scope.borrowed] = [];
