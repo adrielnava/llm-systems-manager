@@ -185,16 +185,50 @@ const _BENCH_AXIS_SHORT = {
 // Dynamically populate axis selects from numeric keys found in raw rows
 // AND from the user's custom switch flags so a sweep over e.g. --threads
 // can be plotted even before any results have arrived for the current run.
+// Inline mirror of js/lib/benchaxis.js's computeBenchAxisOptions — used only
+// when that script failed to load, so axis dropdowns still populate. benchaxis.js
+// stays the canonical unit-tested source when present.
+function _benchAxisOptsFallback(rows, switches, labelFn) {
+  const SKIP = new Set(['ts', 'seq', 'gen_tps', 'ppt_tps', 'model_id', 'avg_ts', 'ms_tok']);
+  const label = typeof labelFn === 'function' ? labelFn : (k) => k;
+  rows = Array.isArray(rows) ? rows : [];
+  const distinct = {};
+  rows.forEach((r) => {
+    Object.entries(r || {}).forEach(([k, v]) => {
+      if (SKIP.has(k) || typeof v !== 'number') return;
+      (distinct[k] = distinct[k] || new Set()).add(v);
+    });
+  });
+  const varied = Object.keys(distinct).filter((k) => distinct[k].size >= 2);
+  const switchKeys = [];
+  (switches || []).forEach((sw) => {
+    if (!sw || typeof sw.flag !== 'string') return;
+    const name = sw.flag.replace(/^--?/, '').trim();
+    if (name) switchKeys.push(name);
+  });
+  const fieldKeys = [...new Set([...varied, ...switchKeys])].sort();
+  const xOptions = [...fieldKeys, 'seq'].map((k) => ({ v: k, t: label(k) }));
+  const yOptions = [
+    { v: 'avg_ts', t: 'Avg tokens/sec' },
+    { v: 'ms_tok', t: 'Milliseconds per token' },
+    ...fieldKeys.filter((k) => k !== 'avg_ts').map((k) => ({ v: k, t: label(k) })),
+  ];
+  const defaultX = fieldKeys.includes('n_depth') ? 'n_depth' : (fieldKeys[0] || 'seq');
+  return { xOptions, yOptions, defaultX, defaultY: 'avg_ts' };
+}
+
 function _updateBenchAxisOpts() {
   const xSel = document.getElementById('benchXAxis');
   const ySel = document.getElementById('benchYAxis');
   if (!xSel || !ySel) return;
-  if (typeof computeBenchAxisOptions !== 'function') return;  // benchaxis.js absent — keep static opts, never throw
   const curX = xSel.value;
   const curY = ySel.value;
 
+  // Use the canonical (unit-tested) benchaxis.js when it loaded; otherwise the
+  // inline fallback, so the dropdowns populate even if that script is missing.
+  const computeFn = (typeof computeBenchAxisOptions === 'function') ? computeBenchAxisOptions : _benchAxisOptsFallback;
   const { xOptions, yOptions, defaultX, defaultY } =
-    computeBenchAxisOptions(_benchRawRows, _benchSwitches, _benchAxisLabel);
+    computeFn(_benchRawRows, _benchSwitches, _benchAxisLabel);
 
   const fill = (sel, opts, cur, dflt) => {
     sel.innerHTML = '';
