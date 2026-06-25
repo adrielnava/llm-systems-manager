@@ -49,6 +49,20 @@ describe('computeBenchAxisOptions', () => {
     expect(xv(r)).toContain('threads');
   });
 
+  it('prefers n_depth as default X even when other dims also vary', () => {
+    const rows = [
+      { n_depth: 0, n_batch: 256, avg_ts: 1 },
+      { n_depth: 512, n_batch: 512, avg_ts: 2 },
+    ];
+    expect(computeBenchAxisOptions(rows, []).defaultX).toBe('n_depth');
+  });
+
+  it('ignores non-string switch flags', () => {
+    const r = computeBenchAxisOptions([{ avg_ts: 1 }, { avg_ts: 2 }], [{ flag: {}, value: '4' }]);
+    expect(xv(r)).not.toContain('[object Object]');
+    expect(xv(r)).toEqual(['seq']);
+  });
+
   it('handles empty rows without throwing', () => {
     const r = computeBenchAxisOptions([], []);
     expect(r.defaultX).toBe('seq');

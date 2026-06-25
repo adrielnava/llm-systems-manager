@@ -17,8 +17,8 @@ function computeBenchAxisOptions(rows, switches, labelFn) {
 
   const switchKeys = [];
   (switches || []).forEach((sw) => {
-    if (!sw || !sw.flag) return;
-    const name = String(sw.flag).replace(/^--?/, '').trim();
+    if (!sw || typeof sw.flag !== 'string') return;
+    const name = sw.flag.replace(/^--?/, '').trim();
     if (name) switchKeys.push(name);
   });
 

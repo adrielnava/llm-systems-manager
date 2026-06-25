@@ -54,9 +54,8 @@ function _mkBenchChart(id, xAxisType) {
             title: function(items) {
               if (!items.length) return '';
               const xSel = document.getElementById('benchXAxis')?.value || 'seq';
-              // raw.x preserves the original value we pushed (number for linear,
-              // numeric string for bar/category). parsed.x is the category INDEX
-              // on bar charts — useless for axes like n_gen=512,1024.
+              // raw.x is the value we pushed (numeric string for the category
+              // axis); parsed.x is the category index, useless for real values.
               const xVal = items[0].raw?.x ?? items[0].parsed.x;
               if (xSel === 'seq')  return 'Test #' + xVal;
               const short = _BENCH_AXIS_SHORT[xSel] || xSel;
