@@ -670,6 +670,12 @@ async function runBenchmark() {
       }
     };
     _benchEventSrc.onerror = () => {
+      // Transient drop: EventSource auto-reconnects and resumes from the last
+      // event id (server replays the gap). Only a CLOSED state is terminal.
+      if (_benchEventSrc && _benchEventSrc.readyState === EventSource.CONNECTING) {
+        document.getElementById('benchStatus').textContent = 'reconnecting…';
+        return;
+      }
       if (_benchEventSrc) { try { _benchEventSrc.close(); } catch(_){} _benchEventSrc = null; }
       document.getElementById('benchRunBtn').disabled = false;
       document.getElementById('benchCancelBtn').style.display = 'none';
