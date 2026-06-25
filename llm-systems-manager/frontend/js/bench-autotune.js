@@ -19,9 +19,6 @@ const BENCH_COLOR_PAIRS = [
 function _mkBenchChart(id, xAxisType) {
   const ctx = document.getElementById(id)?.getContext('2d');
   if (!ctx) return null;
-  const chartType = document.getElementById('benchChartType')?.value || 'line';
-  const isTime = !xAxisType || xAxisType === 'time';
-  const isBar = chartType === 'bar';
 
   const TICK_COLOR  = cssVar('--fg-muted');
   const LABEL_COLOR = 'var(--fg)';
@@ -29,31 +26,18 @@ function _mkBenchChart(id, xAxisType) {
   const TICK_SZ     = 12;
   const TITLE_SZ    = 12;
 
-  // Bar charts need category x-axis; time axis incompatible with bar
-  let xScale;
-  if (isBar) {
-    xScale = { type: 'category',
-      ticks: { color: TICK_COLOR, font: { size: TICK_SZ }, maxRotation: 35 },
-      grid: { color: GRID_COLOR },
-      title: { display: !!xAxisType && xAxisType !== 'time' && xAxisType !== 'seq',
-               text: (xAxisType || 'sequence'), color: LABEL_COLOR, font: { size: TITLE_SZ } } };
-  } else if (isTime) {
-    xScale = { type: 'time',
-      time: { tooltipFormat: 'h:mm:ss a', displayFormats: { second: 'h:mm:ss a', minute: 'h:mm a', hour: 'h:mm a' } },
-      ticks: { color: TICK_COLOR, font: { size: TICK_SZ }, maxTicksLimit: 6, maxRotation: 0 },
-      grid: { color: GRID_COLOR } };
-  } else {
-    xScale = { type: 'linear',
-      ticks: { color: TICK_COLOR, font: { size: TICK_SZ } },
-      grid: { color: GRID_COLOR },
-      title: { display: true, text: xAxisType, color: LABEL_COLOR, font: { size: TITLE_SZ } } };
-  }
+  // Bar chart uses a category x-axis.
+  const xScale = { type: 'category',
+    ticks: { color: TICK_COLOR, font: { size: TICK_SZ }, maxRotation: 35 },
+    grid: { color: GRID_COLOR },
+    title: { display: !!xAxisType && xAxisType !== 'seq',
+             text: (xAxisType || 'sequence'), color: LABEL_COLOR, font: { size: TITLE_SZ } } };
 
   const yAxisSel = document.getElementById('benchYAxis')?.value || 'avg_ts';
   const yLabel = yAxisSel === 'ms_tok' ? 'ms/tok' : yAxisSel === 'avg_ts' ? 't/s' : yAxisSel;
 
   return new Chart(ctx, {
-    type: isBar ? 'bar' : 'line',
+    type: 'bar',
     data: { datasets: [] },
     options: {
       animation: false, responsive: true, maintainAspectRatio: false,
@@ -69,12 +53,11 @@ function _mkBenchChart(id, xAxisType) {
           callbacks: {
             title: function(items) {
               if (!items.length) return '';
-              const xSel = document.getElementById('benchXAxis')?.value || 'time';
+              const xSel = document.getElementById('benchXAxis')?.value || 'seq';
               // raw.x preserves the original value we pushed (number for linear,
               // numeric string for bar/category). parsed.x is the category INDEX
               // on bar charts — useless for axes like n_gen=512,1024.
               const xVal = items[0].raw?.x ?? items[0].parsed.x;
-              if (xSel === 'time') return new Date(xVal).toLocaleTimeString();
               if (xSel === 'seq')  return 'Test #' + xVal;
               const short = _BENCH_AXIS_SHORT[xSel] || xSel;
               return short + ': ' + xVal;
@@ -100,8 +83,7 @@ function _mkBenchChart(id, xAxisType) {
 }
 
 function _benchGetX(row) {
-  const axis = document.getElementById('benchXAxis')?.value || 'time';
-  if (axis === 'time') return new Date(row.ts);
+  const axis = document.getElementById('benchXAxis')?.value || 'seq';
   if (axis === 'seq')  return row.seq;
   return row[axis] ?? 0;
 }
@@ -113,13 +95,11 @@ function _benchGetY(row) {
 }
 
 function _rechartBench() {
-  const xAxis = document.getElementById('benchXAxis')?.value || 'time';
-  const chartType = document.getElementById('benchChartType')?.value || 'line';
-  const isBar = chartType === 'bar';
+  const xAxis = document.getElementById('benchXAxis')?.value || 'seq';
   // Preserve dataset configs (labels + colors) but clear data
   const dsConfigs = (_benchChart?.data.datasets || []).map(d => ({...d, data: []}));
   if (_benchChart) { try { _benchChart.destroy(); } catch(_) {} _benchChart = null; }
-  _benchChart = _mkBenchChart('benchChart', xAxis === 'time' ? null : xAxis);
+  _benchChart = _mkBenchChart('benchChart', xAxis);
   if (!_benchChart) return;
   dsConfigs.forEach(d => _benchChart.data.datasets.push(d));
   // Re-plot all stored rows
@@ -128,7 +108,7 @@ function _rechartBench() {
     if (dsIdx === undefined) return;
     let x = _benchGetX(r);
     const y = _benchGetY(r);
-    if (isBar) x = String(x);   // bar chart needs category (string) x values
+    x = String(x);   // bar chart needs category (string) x values
     if (r.n_gen > 0) {
       _benchChart.data.datasets[dsIdx].data.push({x, y});
     } else if (r.n_prompt > 0) {
@@ -228,17 +208,11 @@ function _benchAddModelDatasets(modelId) {
   const colors = BENCH_COLOR_PAIRS[colorIdx];
   const shortName = modelId.split('/').pop() || modelId;
   _benchModelDatasets[modelId] = _benchChart.data.datasets.length;
-  const chartType = document.getElementById('benchChartType')?.value || 'line';
-  const ptR   = chartType === 'scatter' ? 4 : 3;
-  const ptHov = ptR + 4;
-  const bw    = chartType === 'bar' ? 1 : 2;
   _benchChart.data.datasets.push(
     { label: shortName + ' ppt', data: [], borderColor: colors.ppt, backgroundColor: colors.ppt + '40',
-      borderWidth: bw, pointRadius: ptR, pointHoverRadius: ptHov, fill: false, tension: 0.25,
-      borderDash: chartType === 'bar' ? undefined : [5, 3], showLine: chartType !== 'scatter' },
+      borderWidth: 1, pointRadius: 3, pointHoverRadius: 7, fill: false },
     { label: shortName + ' gen', data: [], borderColor: colors.gen, backgroundColor: colors.gen + '40',
-      borderWidth: bw, pointRadius: ptR, pointHoverRadius: ptHov, fill: false, tension: 0.25,
-      showLine: chartType !== 'scatter' },
+      borderWidth: 1, pointRadius: 3, pointHoverRadius: 7, fill: false },
   );
   _benchChart.update('none');
 }
@@ -349,10 +323,9 @@ function _benchPushPoint(msg) {
   if (!_benchChart) return;
   const dsIdx = _benchModelDatasets[msg.model_id];
   if (dsIdx === undefined) return;
-  const isBar = (document.getElementById('benchChartType')?.value || 'line') === 'bar';
   let x = _benchGetX(raw);
   const y = _benchGetY(raw);
-  if (isBar) x = String(x);
+  x = String(x);
   if ((msg.n_gen ?? 0) > 0) {
     _benchChart.data.datasets[dsIdx].data.push({x, y});
   } else if ((msg.n_prompt ?? 0) > 0) {

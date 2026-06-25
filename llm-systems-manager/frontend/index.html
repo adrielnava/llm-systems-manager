@@ -1519,17 +1519,10 @@ Backend API endpoints consumed:
       <button id="benchCancelBtn" class="btn btn-red-muted-gradient" onclick="cancelBenchmark()" style="display:none;">✕ Cancel</button>
       <button id="benchRunBtn" class="btn btn-stone-muted-gradient" onclick="runBenchmark()">▶ Run Benchmark</button>
     </div>
-    <!-- Axis + chart type selectors -->
+    <!-- Axis selectors -->
     <div class="bench-axis-row">
-      <label>Chart:</label>
-      <select id="benchChartType" class="bench-axis-sel" onchange="_rechartBench()">
-        <option value="line">Line</option>
-        <option value="scatter">Scatter</option>
-        <option value="bar">Bar</option>
-      </select>
-      <label style="margin-left:8px;">X:</label>
+      <label>X:</label>
       <select id="benchXAxis" class="bench-axis-sel" onchange="_rechartBench()">
-        <option value="time">time</option>
         <option value="seq">sequence</option>
       </select>
       <label style="margin-left:8px;">Y:</label>
