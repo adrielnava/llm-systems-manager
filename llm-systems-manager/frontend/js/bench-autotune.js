@@ -876,6 +876,15 @@ async function atStopServer() {
 // One-shot wiring: when any optional-param value field receives input or a
 // dropdown selection, auto-tick its enable checkbox so the param is actually
 // sent. Saves the user from the "I set a value but forgot to enable it" trap.
+// Show how many optional params are enabled in the collapsed group header.
+function _atUpdateOptCount() {
+  const det  = document.getElementById('atOptionalParamsDetails');
+  const span = document.getElementById('atOptCount');
+  if (!det || !span) return;
+  const n = det.querySelectorAll('input[type=checkbox]:checked').length;
+  span.textContent = n ? ` (${n} set)` : '';
+}
+
 function _atWireOptionalAutoCheck() {
   if (window._atOptAutoCheckWired) return;
   const pairs = ['parallel','cache_ram','b','ub','ngl','ctk','ctv'];
@@ -883,10 +892,12 @@ function _atWireOptionalAutoCheck() {
     const v  = document.getElementById('atV_'  + name);
     const en = document.getElementById('atEn_' + name);
     if (!v || !en) return;
-    const tick = () => { if (!en.checked) en.checked = true; };
+    const tick = () => { if (!en.checked) en.checked = true; _atUpdateOptCount(); };
     v.addEventListener('input',  tick);
     v.addEventListener('change', tick);
   });
+  const det = document.getElementById('atOptionalParamsDetails');
+  if (det) det.addEventListener('change', _atUpdateOptCount);
   window._atOptAutoCheckWired = true;
 }
 
@@ -902,6 +913,7 @@ async function openAutotune() {
   // Models open for selection; optional-params stays collapsed.
   document.getElementById('atModelsDetails')?.setAttribute('open', '');
   document.getElementById('atOptionalParamsDetails')?.removeAttribute('open');
+  _atUpdateOptCount();
 
   // Populate model list (same source as benchmark)
   let models = [];
@@ -1253,10 +1265,10 @@ function _atRenderResultCard(payload) {
   card.innerHTML = `
     <div><b>${_hEsc(modelId)}</b> — ${tag}</div>
     <div class="at-result-grid">
-      <div>ctx-size: <b>${_hEsc(String(ctx))}</b></div>
-      <div>final -fitt: <b>${_hEsc(String(fitt))}</b></div>
-      <div>free VRAM: <b>${_hEsc(String(free))}</b> MB / ${_hEsc(String(tot))} MB</div>
-      <div>iterations: <b>${_hEsc(String(iters))}</b></div>
+      <div class="at-stat"><div class="at-stat-k">ctx-size</div><div class="at-stat-v">${_hEsc(String(ctx))}</div></div>
+      <div class="at-stat"><div class="at-stat-k">free VRAM</div><div class="at-stat-v">${_hEsc(String(free))}<span class="at-stat-u"> / ${_hEsc(String(tot))} MB</span></div></div>
+      <div class="at-stat"><div class="at-stat-k">final -fitt</div><div class="at-stat-v">${_hEsc(String(fitt))}</div></div>
+      <div class="at-stat"><div class="at-stat-k">iterations</div><div class="at-stat-v">${_hEsc(String(iters))}</div></div>
     </div>
     <div style="font-size:0.82em;color:var(--fg-dim);">applied params: ${paramSummary}</div>
     <div class="at-result-actions">
@@ -1374,24 +1386,6 @@ function _benchAddModelResultRow(modelId, _unused1, _unused2, tool) {
 
   const rows = document.getElementById('benchResultRows');
 
-  // Insert a column-header row once per session — gives the values columns
-  // (PPT/GEN/PG) labels so the user can read them at a glance.
-  if (rows && !rows.querySelector('.bench-result-header')) {
-    const header = document.createElement('div');
-    header.className = 'bench-result-header';
-    header.innerHTML = `
-      <span class="h-model">Model</span>
-      <span class="h-spacer">Highest t/s</span>
-      <span class="h-vals">
-        <span style="color:var(--warn)">PPT</span>
-        <span style="color:var(--fg-muted)">GEN</span>
-        <span style="color:var(--accent-2)">PG</span>
-      </span>
-      <span class="h-spacer" style="opacity:0">save clr</span>
-    `;
-    rows.appendChild(header);
-  }
-
   const row = document.createElement('div');
   row.className = 'bench-result-row';
 
@@ -1406,30 +1400,25 @@ function _benchAddModelResultRow(modelId, _unused1, _unused2, tool) {
   nameEl.textContent = cleanModelId || modelId;
   nameEl.title = modelId;     // keep the full string discoverable on hover
 
-  const labelEl = document.createElement('span');
-  labelEl.className = 'bench-result-label';
-  labelEl.textContent = 'Results (highest t/s):';
-
   const valsEl = document.createElement('span');
   valsEl.className = 'bench-result-vals';
-
-  const pptEl = document.createElement('span');
-  pptEl.className = 'bench-avg-val';
-  pptEl.style.color = 'var(--warn)';
-  pptEl.textContent = maxPpt != null ? `ppt ${maxPpt.toFixed(1)}` : 'ppt —';
-
-  const genEl = document.createElement('span');
-  genEl.className = 'bench-avg-val';
-  genEl.textContent = maxGen != null ? `gen ${maxGen.toFixed(1)}` : 'gen —';
-
-  const pgEl = document.createElement('span');
-  pgEl.className = 'bench-avg-val';
-  pgEl.style.color = 'var(--accent-2)';
-  pgEl.textContent = maxPg != null ? `pg ${maxPg.toFixed(1)}` : 'pg —';
-
-  valsEl.appendChild(pptEl);
-  valsEl.appendChild(genEl);
-  valsEl.appendChild(pgEl);
+  const mkStat = (label, val, color, digits) => {
+    const card = document.createElement('div');
+    card.className = 'bench-stat-card';
+    const k = document.createElement('div');
+    k.className = 'bench-stat-k';
+    if (color) k.style.color = color;
+    k.textContent = label;
+    const v = document.createElement('div');
+    v.className = 'bench-stat-v';
+    v.textContent = val != null ? val.toFixed(digits) : '—';
+    card.appendChild(k);
+    card.appendChild(v);
+    return card;
+  };
+  valsEl.appendChild(mkStat('PPT t/s', maxPpt, 'var(--warn)', 0));
+  valsEl.appendChild(mkStat('GEN t/s', maxGen, null, 1));
+  valsEl.appendChild(mkStat('PG t/s', maxPg, 'var(--accent-2)', 0));
 
   const saveBtn = document.createElement('button');
   saveBtn.className = 'btn btn-zinc-muted-gradient';
@@ -1457,7 +1446,6 @@ function _benchAddModelResultRow(modelId, _unused1, _unused2, tool) {
   });
 
   row.appendChild(nameEl);
-  row.appendChild(labelEl);
   row.appendChild(valsEl);
   row.appendChild(saveBtn);
   row.appendChild(clearBtn);

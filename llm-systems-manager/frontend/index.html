@@ -45,7 +45,7 @@ Backend API endpoints consumed:
   <link rel="stylesheet" href="https://cdn.jsdelivr.net/npm/xterm@5.3.0/css/xterm.min.css"/>
   <script src="https://cdn.jsdelivr.net/npm/xterm@5.3.0/lib/xterm.min.js"></script>
   <script src="https://cdn.jsdelivr.net/npm/xterm-addon-fit@0.8.0/lib/xterm-addon-fit.min.js"></script>
-  <link rel="stylesheet" href="/static/css/base.css?v=2026.06.10-6">
+  <link rel="stylesheet" href="/static/css/base.css?v=2026.06.25-2">
 </head>
 <body>
 
@@ -1415,7 +1415,7 @@ Backend API endpoints consumed:
 <script src="/static/js/openclaw.js?v=2026.06.10-7"></script>
 <script src="/static/js/admin.js?v=2026.06.10-6"></script>
 <script src="/static/js/llmcontrol-models.js?v=2026.06.10-6"></script>
-<script src="/static/js/bench-autotune.js?v=2026.06.24-6"></script>
+<script src="/static/js/bench-autotune.js?v=2026.06.25-1"></script>
 <script src="/static/js/lmstudio.js?v=2026.06.15-14"></script>
 <script src="/static/js/overall.js?v=2026.06.09-2"></script>
 <script src="/static/js/dashboard-manager.js?v=2026.06.21-1"></script>
@@ -1483,75 +1483,75 @@ Backend API endpoints consumed:
 <!-- Benchmark overlay — kept at body root -->
 <div class="bench-overlay" id="benchOverlay">
   <div class="bench-panel">
-    <!-- Header -->
-    <div class="bench-row" style="justify-content:space-between;margin-bottom:2px;">
+    <!-- Header spans both panes -->
+    <div class="bench-header">
       <h2 id="benchTitle">⏱ Benchmark</h2>
       <button class="close-btn" onclick="closeBench()" style="background:none;border:none;color:var(--fg-dim);cursor:pointer;font-size:1.2em;">✕</button>
     </div>
-    <!-- Controls row: Models dropdown + Switches dropdown -->
-    <div class="bench-controls-row">
-      <div class="bench-dropdown" id="benchModelDrop">
-        <button class="bench-drop-btn" id="benchModelDropBtn" onclick="toggleBenchDrop('benchModelDrop')">
-          <span id="benchModelLabel">Select models…</span>
-          <span class="bench-drop-caret">▾</span>
-        </button>
-        <div class="bench-drop-panel" id="benchModelPanel"></div>
-      </div>
-      <div class="bench-dropdown" id="benchSwitchDrop">
-        <button class="bench-drop-btn" id="benchSwitchDropBtn" onclick="toggleBenchDrop('benchSwitchDrop')">
-          <span id="benchSwitchLabel">Switches</span>
-          <span class="bench-drop-caret">▾</span>
-        </button>
-        <div class="bench-drop-panel" id="benchSwitchPanel">
-          <div id="benchSwitchList"></div>
-          <button class="bench-add-btn" onclick="addBenchSwitch()">+ Add switch</button>
+    <!-- Two-pane body: config rail (left) + results (right) -->
+    <div class="bench-body">
+      <div class="bench-rail">
+        <div class="bench-tabs">
+          <button class="bench-tab active" data-tab="llama-bench"         onclick="switchBenchTab('llama-bench')">llama-bench</button>
+          <button class="bench-tab"        data-tab="llama-batched-bench" onclick="switchBenchTab('llama-batched-bench')">batched</button>
+        </div>
+        <div class="bench-dropdown" id="benchModelDrop">
+          <button class="bench-drop-btn" id="benchModelDropBtn" onclick="toggleBenchDrop('benchModelDrop')">
+            <span id="benchModelLabel">Select models…</span>
+            <span class="bench-drop-caret">▾</span>
+          </button>
+          <div class="bench-drop-panel" id="benchModelPanel"></div>
+        </div>
+        <div class="bench-dropdown" id="benchSwitchDrop">
+          <button class="bench-drop-btn" id="benchSwitchDropBtn" onclick="toggleBenchDrop('benchSwitchDrop')">
+            <span id="benchSwitchLabel">Switches</span>
+            <span class="bench-drop-caret">▾</span>
+          </button>
+          <div class="bench-drop-panel" id="benchSwitchPanel">
+            <div id="benchSwitchList"></div>
+            <button class="bench-add-btn" onclick="addBenchSwitch()">+ Add switch</button>
+          </div>
+        </div>
+        <div class="bench-rail-actions">
+          <span id="benchStatus" class="bench-status-pill">idle</span>
+          <button id="benchCancelBtn" class="btn btn-red-muted-gradient" onclick="cancelBenchmark()" style="display:none;">✕ Cancel</button>
+          <button id="benchRunBtn" class="btn btn-stone-muted-gradient" onclick="runBenchmark()">▶ Run Benchmark</button>
         </div>
       </div>
-      <!-- Tool tabs flush right -->
-      <div class="bench-tabs" style="margin-left:auto;">
-        <button class="bench-tab active" data-tab="llama-bench"         onclick="switchBenchTab('llama-bench')">llama-bench</button>
-        <button class="bench-tab"        data-tab="llama-batched-bench" onclick="switchBenchTab('llama-batched-bench')">llama-batched-bench</button>
+      <div class="bench-results-pane">
+        <div class="bench-axis-row">
+          <label>X:</label>
+          <select id="benchXAxis" class="bench-axis-sel" onchange="_rechartBench()">
+            <option value="seq">sequence</option>
+          </select>
+          <label style="margin-left:8px;">Y:</label>
+          <select id="benchYAxis" class="bench-axis-sel" onchange="_rechartBench()">
+            <option value="avg_ts">t/s</option>
+            <option value="ms_tok">ms/tok</option>
+          </select>
+        </div>
+        <div class="bench-chart-wrap">
+          <canvas id="benchChart"></canvas>
+        </div>
+        <div id="benchLog"></div>
+        <div id="benchResults">
+          <div id="benchResultRows"></div>
+        </div>
       </div>
-    </div>
-    <!-- Action row: status pill + cancel + run — never compresses tabs above -->
-    <div class="bench-action-row">
-      <span id="benchStatus" class="bench-status-pill">idle</span>
-      <button id="benchCancelBtn" class="btn btn-red-muted-gradient" onclick="cancelBenchmark()" style="display:none;">✕ Cancel</button>
-      <button id="benchRunBtn" class="btn btn-stone-muted-gradient" onclick="runBenchmark()">▶ Run Benchmark</button>
-    </div>
-    <!-- Axis selectors -->
-    <div class="bench-axis-row">
-      <label>X:</label>
-      <select id="benchXAxis" class="bench-axis-sel" onchange="_rechartBench()">
-        <option value="seq">sequence</option>
-      </select>
-      <label style="margin-left:8px;">Y:</label>
-      <select id="benchYAxis" class="bench-axis-sel" onchange="_rechartBench()">
-        <option value="avg_ts">t/s</option>
-        <option value="ms_tok">ms/tok</option>
-      </select>
-    </div>
-    <!-- Chart — main focus -->
-    <div class="bench-chart-wrap">
-      <canvas id="benchChart"></canvas>
-    </div>
-    <!-- Log — main focus -->
-    <div id="benchLog"></div>
-    <!-- Results (shown after run completes) -->
-    <div id="benchResults">
-      <div id="benchResultRows"></div>
     </div>
   </div>
 </div>
 
 <!-- Auto-Tune CTX overlay — reuses bench-overlay/panel CSS for consistency -->
-<link rel="stylesheet" href="/static/css/autotune.css?v=2026.06.10-6">
+<link rel="stylesheet" href="/static/css/autotune.css?v=2026.06.25-1">
 <div class="bench-overlay" id="autotuneOverlay">
   <div class="bench-panel">
-    <div class="bench-row" style="justify-content:space-between;margin-bottom:6px;">
+    <div class="bench-header">
       <h2>🎯 Auto Tune CTX</h2>
       <button class="close-btn" onclick="closeAutotune()" style="background:none;border:none;color:var(--fg-dim);cursor:pointer;font-size:1.2em;">✕</button>
     </div>
+    <div class="bench-body">
+      <div class="bench-rail">
 
     <!-- Pre-flight: llama-server must be stopped -->
     <div id="atPreflight" class="bench-row" style="background:var(--bg-card-alt);border:1px solid var(--border-strong);border-radius:6px;padding:8px 12px;margin-bottom:6px;display:none;">
@@ -1560,34 +1560,37 @@ Backend API endpoints consumed:
     </div>
 
     <!-- Step 1: Models — collapsible, auto-closes on Run -->
-    <details id="atModelsDetails" class="bench-row" style="align-items:flex-start;display:block;" open>
-      <summary style="cursor:pointer;font-size:0.9em;font-weight:500;padding:4px 0;">Models to tune (select one or more)</summary>
+    <details id="atModelsDetails" open>
+      <summary>Models</summary>
       <div id="atModelPanel" style="background:var(--bg-card-alt);border:1px solid var(--border-strong);border-radius:4px;padding:6px 8px;margin-top:6px;"></div>
     </details>
 
     <!-- Step 2: Target free VRAM + tolerance -->
-    <div class="bench-row">
-      <div class="at-field">
-        <label>Target free VRAM (MB)</label>
-        <input id="atTargetMb" type="number" min="0" step="64" value="1024" />
+    <div class="modal-group">
+      <div class="modal-group-h">Targets</div>
+      <div class="bench-row">
+        <div class="at-field">
+          <label>Target free VRAM (MB)</label>
+          <input id="atTargetMb" type="number" min="0" step="64" value="1024" />
+        </div>
+        <div class="at-field">
+          <label>Tolerance ± (MB)</label>
+          <input id="atToleranceMb" type="number" min="1" step="1" value="50" />
+        </div>
+        <div class="at-field" style="max-width:340px;flex:1;">
+          <label style="color:var(--fg-dim)">Tuner converges within ± Tolerance of target, max 10 iterations per model.</label>
+        </div>
+        <label style="margin-left:auto;font-size:0.85em;display:flex;align-items:center;gap:6px;">
+          <input id="atRestartAfter" type="checkbox" />
+          Restart llama-server after tune
+        </label>
       </div>
-      <div class="at-field">
-        <label>Tolerance ± (MB)</label>
-        <input id="atToleranceMb" type="number" min="1" step="1" value="50" />
-      </div>
-      <div class="at-field" style="max-width:340px;flex:1;">
-        <label style="color:var(--fg-dim)">Tuner converges within ± Tolerance of target, max 10 iterations per model.</label>
-      </div>
-      <label style="margin-left:auto;font-size:0.85em;display:flex;align-items:center;gap:6px;">
-        <input id="atRestartAfter" type="checkbox" />
-        Restart llama-server after tune
-      </label>
     </div>
 
     <!-- Step 3: Optional runtime parameters (collapsed by default; also
          auto-collapses when Run Auto Tune is pressed). -->
-    <details id="atOptionalParamsDetails" style="margin:6px 0;">
-      <summary style="cursor:pointer;font-size:0.9em;color:var(--fg-dim);">Optional runtime parameters (omitted flags use llama-server defaults)</summary>
+    <details id="atOptionalParamsDetails">
+      <summary>Optional params<span id="atOptCount"></span></summary>
       <div style="padding:8px 4px;display:grid;grid-template-columns:repeat(auto-fit,minmax(280px,1fr));gap:4px 16px;">
         <div class="at-opt-row">
           <input type="checkbox" id="atEn_mlock">
@@ -1676,12 +1679,14 @@ Backend API endpoints consumed:
       </div>
     </details>
 
-    <!-- Action row -->
-    <div class="bench-action-row">
+    <!-- Action row (rail bottom) -->
+    <div class="bench-rail-actions">
       <span id="atStatus" class="bench-status-pill">idle</span>
       <button id="atCancelBtn" class="btn btn-red-muted-gradient" onclick="cancelAutotune()" style="display:none;">✕ Cancel</button>
       <button id="atRunBtn" class="btn btn-stone-muted-gradient" onclick="runAutotune()">▶ Run Auto Tune</button>
     </div>
+      </div>
+      <div class="bench-results-pane">
 
     <!-- Live results (one card per model as it completes) -->
     <div id="atResults"></div>
@@ -1698,6 +1703,8 @@ Backend API endpoints consumed:
       </summary>
       <div id="atRawLog"></div>
     </details>
+      </div>
+    </div>
   </div>
 </div>
 <!-- ── Alarm Engine Toast Container (top-right, matches Events tab style) ── -->
