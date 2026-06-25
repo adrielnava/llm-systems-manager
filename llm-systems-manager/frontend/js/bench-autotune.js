@@ -93,6 +93,15 @@ function _benchGetY(row) {
   return row[axis] ?? 0;
 }
 
+// Drive the benchmark status pill's chip color (idle=muted, running=warn,
+// ok=green, err=red). Mutually exclusive — clears the others.
+function _benchSetState(state) {
+  const el = document.getElementById('benchStatus');
+  if (!el) return;
+  el.classList.remove('running', 'ok', 'err');
+  if (state === 'running' || state === 'ok' || state === 'err') el.classList.add(state);
+}
+
 function _rechartBench() {
   const xAxis = document.getElementById('benchXAxis')?.value || 'seq';
   // Preserve dataset configs (labels + colors) but clear data
@@ -176,6 +185,38 @@ const _BENCH_AXIS_SHORT = {
 // Dynamically populate axis selects from numeric keys found in raw rows
 // AND from the user's custom switch flags so a sweep over e.g. --threads
 // can be plotted even before any results have arrived for the current run.
+// Inline mirror of js/lib/benchaxis.js's computeBenchAxisOptions — used only
+// when that script failed to load, so axis dropdowns still populate. benchaxis.js
+// stays the canonical unit-tested source when present.
+function _benchAxisOptsFallback(rows, switches, labelFn) {
+  const SKIP = new Set(['ts', 'seq', 'gen_tps', 'ppt_tps', 'model_id', 'avg_ts', 'ms_tok']);
+  const label = typeof labelFn === 'function' ? labelFn : (k) => k;
+  rows = Array.isArray(rows) ? rows : [];
+  const distinct = {};
+  rows.forEach((r) => {
+    Object.entries(r || {}).forEach(([k, v]) => {
+      if (SKIP.has(k) || typeof v !== 'number') return;
+      (distinct[k] = distinct[k] || new Set()).add(v);
+    });
+  });
+  const varied = Object.keys(distinct).filter((k) => distinct[k].size >= 2);
+  const switchKeys = [];
+  (switches || []).forEach((sw) => {
+    if (!sw || typeof sw.flag !== 'string') return;
+    const name = sw.flag.replace(/^--?/, '').trim();
+    if (name) switchKeys.push(name);
+  });
+  const fieldKeys = [...new Set([...varied, ...switchKeys])].sort();
+  const xOptions = [...fieldKeys, 'seq'].map((k) => ({ v: k, t: label(k) }));
+  const yOptions = [
+    { v: 'avg_ts', t: 'Avg tokens/sec' },
+    { v: 'ms_tok', t: 'Milliseconds per token' },
+    ...fieldKeys.filter((k) => k !== 'avg_ts').map((k) => ({ v: k, t: label(k) })),
+  ];
+  const defaultX = fieldKeys.includes('n_depth') ? 'n_depth' : (fieldKeys[0] || 'seq');
+  return { xOptions, yOptions, defaultX, defaultY: 'avg_ts' };
+}
+
 function _updateBenchAxisOpts() {
   const xSel = document.getElementById('benchXAxis');
   const ySel = document.getElementById('benchYAxis');
@@ -183,8 +224,11 @@ function _updateBenchAxisOpts() {
   const curX = xSel.value;
   const curY = ySel.value;
 
+  // Use the canonical (unit-tested) benchaxis.js when it loaded; otherwise the
+  // inline fallback, so the dropdowns populate even if that script is missing.
+  const computeFn = (typeof computeBenchAxisOptions === 'function') ? computeBenchAxisOptions : _benchAxisOptsFallback;
   const { xOptions, yOptions, defaultX, defaultY } =
-    computeBenchAxisOptions(_benchRawRows, _benchSwitches, _benchAxisLabel);
+    computeFn(_benchRawRows, _benchSwitches, _benchAxisLabel);
 
   const fill = (sel, opts, cur, dflt) => {
     sel.innerHTML = '';
@@ -286,7 +330,8 @@ function _benchFormatLine(text) {
     const dispVal = yType === 'ms_tok' ? (ts > 0 ? (1000/ts).toFixed(2) + ' ms/tok' : '—')
                                        : ts.toFixed(2) + ' t/s';
     return `<div class="bench-log-result">
-      <span class="bench-log-type ${typeCls}">${typeLabel}</span>${fields}
+      <span class="bench-log-type ${typeCls}">${typeLabel}</span>
+      <span class="bench-log-fields">${fields}</span>
       <span class="bench-log-tps">${dispVal}${sd}</span>
     </div>`;
   }
@@ -317,7 +362,8 @@ function _benchPushPoint(msg) {
     if (typeof v === 'number' && k !== 'gen_tps' && k !== 'ppt_tps') raw[k] = v;
   });
   _benchRawRows.push(raw);
-  _updateBenchAxisOpts();
+  // Axis-option update is a side-effect — never let it abort chart plotting below.
+  try { _updateBenchAxisOpts(); } catch (e) { console.warn('bench axis-opts update failed', e); }
 
   if (!_benchChart) return;
   const dsIdx = _benchModelDatasets[msg.model_id];
@@ -416,7 +462,7 @@ async function openBench(modelId) {
   _benchLogClear();
   _benchRenderPlaceholder();
   document.getElementById('benchStatus').textContent = 'idle';
-  document.getElementById('benchStatus').classList.remove('running');
+  _benchSetState('idle');
   document.getElementById('benchRunBtn').disabled = false;
   if (_benchChart) {
     _benchChart.data.datasets = [];
@@ -581,7 +627,7 @@ async function runBenchmark() {
       if (!ok) return;
       if (loadedModel) {
         document.getElementById('benchStatus').textContent = 'unloading model…';
-        document.getElementById('benchStatus').classList.add('running');
+        _benchSetState('running');
         try {
           await fetch('/api/llm/unload', {
             method: 'POST', headers: {'Content-Type':'application/json'},
@@ -591,7 +637,7 @@ async function runBenchmark() {
       }
       if (serverUp) {
         document.getElementById('benchStatus').textContent = 'stopping server…';
-        document.getElementById('benchStatus').classList.add('running');
+        _benchSetState('running');
         try { await fetch('/api/llm/server/stop', {method: 'POST'}); } catch(_) {}
         // Poll up to 15s for server to actually be down before launching bench
         for (let i = 0; i < 15; i++) {
@@ -607,10 +653,10 @@ async function runBenchmark() {
 
   document.getElementById('benchRunBtn').disabled = true;
   document.getElementById('benchStatus').textContent = 'perf mode…';
-  document.getElementById('benchStatus').classList.add('running');
+  _benchSetState('running');
   await _benchSetPerfMode('performance');
   document.getElementById('benchStatus').textContent = 'starting…';
-  document.getElementById('benchStatus').classList.add('running');
+  _benchSetState('running');
   document.getElementById('benchResults').classList.remove('shown');
   document.getElementById('benchResultRows').innerHTML = '';
   document.getElementById('benchCancelBtn').style.display = '';
@@ -634,7 +680,7 @@ async function runBenchmark() {
       document.getElementById('benchRunBtn').disabled = false;
       document.getElementById('benchCancelBtn').style.display = 'none';
       document.getElementById('benchStatus').textContent = 'idle';
-      document.getElementById('benchStatus').classList.remove('running');
+      _benchSetState('idle');
       return;
     }
     if (_benchEventSrc) { try { _benchEventSrc.close(); } catch(_){} }
@@ -666,7 +712,7 @@ async function runBenchmark() {
         document.getElementById('benchRunBtn').disabled = false;
         document.getElementById('benchCancelBtn').style.display = 'none';
         document.getElementById('benchStatus').textContent = msg.ok ? 'done' : (msg.error ? 'error' : 'done');
-        document.getElementById('benchStatus').classList.remove('running');
+        _benchSetState(msg.ok ? 'ok' : 'err');
         if (msg.error) _benchLogAppend(`<span class="bench-log-text" style="color:var(--crit)">✗ Error: ${_hEsc(String(msg.error))}</span>`);
       }
     };
@@ -681,14 +727,14 @@ async function runBenchmark() {
       document.getElementById('benchRunBtn').disabled = false;
       document.getElementById('benchCancelBtn').style.display = 'none';
       document.getElementById('benchStatus').textContent = 'disconnected';
-      document.getElementById('benchStatus').classList.remove('running');
+      _benchSetState('err');
     };
   }).catch(e => {
     alert('Benchmark request failed: ' + e);
     document.getElementById('benchRunBtn').disabled = false;
     document.getElementById('benchCancelBtn').style.display = 'none';
     document.getElementById('benchStatus').textContent = 'idle';
-    document.getElementById('benchStatus').classList.remove('running');
+    _benchSetState('idle');
   });
 }
 
@@ -699,7 +745,7 @@ function cancelBenchmark() {
   document.getElementById('benchRunBtn').disabled = false;
   document.getElementById('benchCancelBtn').style.display = 'none';
   document.getElementById('benchStatus').textContent = 'cancelled';
-  document.getElementById('benchStatus').classList.remove('running');
+  _benchSetState('idle');
 }
 
 // ===========================================================================
