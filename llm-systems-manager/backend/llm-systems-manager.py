@@ -75,6 +75,7 @@ import time
 import sqlite3
 import subprocess
 import threading
+import uuid
 from datetime import datetime, timezone, timedelta
 from pathlib import Path
 from typing import Any  # Required pre-Python 3.14; 3.14+ defers annotation eval (PEP 649).
@@ -153,7 +154,7 @@ def _local_hostname() -> str:
 # banner reads it. Bump suffix (-1, -2, …) for same-day iterations; roll
 # the date for a new day's first change.
 # ---------------------------------------------------------------------------
-__version__ = "v2026.06.24-5"
+__version__ = "v2026.06.24-6"
 
 # Wall-clock at first import (Cheroot main process); the shutdown banner
 # reads it for the uptime line.
@@ -164,6 +165,7 @@ _startup_ts: float = time.time()
 sys.path.insert(0, str(Path(__file__).resolve().parent))
 import provider_state  # type: ignore[import-not-found]  # noqa: E402  # leaf, no cycle
 from _best_effort import best_effort  # type: ignore[import-not-found]  # noqa: E402  # leaf, no cycle
+from _bench_replay import BenchReplayBuffer  # type: ignore[import-not-found]  # noqa: E402  # leaf, no cycle
 import providers       # type: ignore[import-not-found]  # noqa: E402,F401  # side-effect: registers specs
 import stream_pool     # type: ignore[import-not-found]  # noqa: E402  # leaf, no cycle
 import stream_health   # type: ignore[import-not-found]  # noqa: E402  # leaf, no cycle
@@ -1261,20 +1263,17 @@ import queue as _queue
 CONFIG_INI   = Path("/usr/local/llama-server/config.ini")
 
 
-# Separate queue for benchmark streaming (llama-bench / llama-batched-bench)
-_bench_queue  = _queue.Queue(maxsize=settings.manager.benchmark.stream_queue_size)
+# Per-run replay buffer for benchmark streaming (llama-bench / llama-batched-bench)
+_bench_replay = BenchReplayBuffer(maxlen=settings.manager.benchmark.stream_queue_size)
+_bench_cond   = threading.Condition()
 _bench_active = False
 _bench_lock   = threading.Lock()
 
 def _bench_put(msg: dict):
-    """Put a message on _bench_queue; drop oldest if full so producers never block."""
-    try:
-        _bench_queue.put_nowait(msg)
-    except _queue.Full:
-        try: _bench_queue.get_nowait()
-        except _queue.Empty: pass
-        try: _bench_queue.put_nowait(msg)
-        except _queue.Full: pass
+    """Append to the per-run replay buffer and wake any waiting streams."""
+    with _bench_cond:
+        _bench_replay.append(msg)
+        _bench_cond.notify_all()
 
 # Separate queue for llama server log streaming
 
@@ -1679,9 +1678,8 @@ def _queue_benchmark(model_ids: list, tool: str, switches: list) -> bool:
         if _bench_active:
             return False
         _bench_active = True
-    while not _bench_queue.empty():
-        try: _bench_queue.get_nowait()
-        except Exception: break
+    with _bench_cond:
+        _bench_replay.start_run(uuid.uuid4().hex[:12])
     threading.Thread(target=_run_benchmark, args=(model_ids, tool, switches), daemon=True).start()
     return True
 
@@ -1784,15 +1782,30 @@ def benchmark_stream():
     if proxied is not None:
         return proxied
     from flask import stream_with_context
+    last_event_id = flask_request.headers.get("Last-Event-ID")
     def generate():
+        with _bench_cond:
+            cur_run = _bench_replay.run_id
+            last_seq = _bench_replay.seq_for(last_event_id)
         while True:
-            try:
-                msg = _bench_queue.get(timeout=30)
-                yield f"data: {json.dumps(msg)}\n\n"
-                if msg.get("type") == "done":
-                    break
-            except _queue.Empty:
+            with _bench_cond:
+                if cur_run and _bench_replay.run_id != cur_run:
+                    return   # superseded by a newer run; client opens a fresh stream
+                cur_run = _bench_replay.run_id
+                new = _bench_replay.records_after_seq(last_seq)
+                if not new:
+                    _bench_cond.wait(timeout=10)
+                    if cur_run and _bench_replay.run_id != cur_run:
+                        return
+                    new = _bench_replay.records_after_seq(last_seq)
+            if not new:
                 yield 'data: {"type":"keepalive"}\n\n'
+                continue
+            for rec in new:
+                yield f"id: {rec['id']}\ndata: {json.dumps(rec['event'])}\n\n"
+                last_seq = rec["seq"]
+                if rec["event"].get("type") == "done":
+                    return
     return app.response_class(
         stream_with_context(generate()),
         mimetype="text/event-stream",
