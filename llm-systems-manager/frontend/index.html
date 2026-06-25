@@ -1543,7 +1543,7 @@ Backend API endpoints consumed:
 </div>
 
 <!-- Auto-Tune CTX overlay — reuses bench-overlay/panel CSS for consistency -->
-<link rel="stylesheet" href="/static/css/autotune.css?v=2026.06.10-6">
+<link rel="stylesheet" href="/static/css/autotune.css?v=2026.06.25-1">
 <div class="bench-overlay" id="autotuneOverlay">
   <div class="bench-panel">
     <div class="bench-header">
@@ -1566,22 +1566,25 @@ Backend API endpoints consumed:
     </details>
 
     <!-- Step 2: Target free VRAM + tolerance -->
-    <div class="bench-row">
-      <div class="at-field">
-        <label>Target free VRAM (MB)</label>
-        <input id="atTargetMb" type="number" min="0" step="64" value="1024" />
+    <div class="modal-group">
+      <div class="modal-group-h">Targets</div>
+      <div class="bench-row">
+        <div class="at-field">
+          <label>Target free VRAM (MB)</label>
+          <input id="atTargetMb" type="number" min="0" step="64" value="1024" />
+        </div>
+        <div class="at-field">
+          <label>Tolerance ± (MB)</label>
+          <input id="atToleranceMb" type="number" min="1" step="1" value="50" />
+        </div>
+        <div class="at-field" style="max-width:340px;flex:1;">
+          <label style="color:var(--fg-dim)">Tuner converges within ± Tolerance of target, max 10 iterations per model.</label>
+        </div>
+        <label style="margin-left:auto;font-size:0.85em;display:flex;align-items:center;gap:6px;">
+          <input id="atRestartAfter" type="checkbox" />
+          Restart llama-server after tune
+        </label>
       </div>
-      <div class="at-field">
-        <label>Tolerance ± (MB)</label>
-        <input id="atToleranceMb" type="number" min="1" step="1" value="50" />
-      </div>
-      <div class="at-field" style="max-width:340px;flex:1;">
-        <label style="color:var(--fg-dim)">Tuner converges within ± Tolerance of target, max 10 iterations per model.</label>
-      </div>
-      <label style="margin-left:auto;font-size:0.85em;display:flex;align-items:center;gap:6px;">
-        <input id="atRestartAfter" type="checkbox" />
-        Restart llama-server after tune
-      </label>
     </div>
 
     <!-- Step 3: Optional runtime parameters (collapsed by default; also

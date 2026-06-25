@@ -1265,10 +1265,10 @@ function _atRenderResultCard(payload) {
   card.innerHTML = `
     <div><b>${_hEsc(modelId)}</b> — ${tag}</div>
     <div class="at-result-grid">
-      <div>ctx-size: <b>${_hEsc(String(ctx))}</b></div>
-      <div>final -fitt: <b>${_hEsc(String(fitt))}</b></div>
-      <div>free VRAM: <b>${_hEsc(String(free))}</b> MB / ${_hEsc(String(tot))} MB</div>
-      <div>iterations: <b>${_hEsc(String(iters))}</b></div>
+      <div class="at-stat"><div class="at-stat-k">ctx-size</div><div class="at-stat-v">${_hEsc(String(ctx))}</div></div>
+      <div class="at-stat"><div class="at-stat-k">free VRAM</div><div class="at-stat-v">${_hEsc(String(free))}<span class="at-stat-u"> / ${_hEsc(String(tot))} MB</span></div></div>
+      <div class="at-stat"><div class="at-stat-k">final -fitt</div><div class="at-stat-v">${_hEsc(String(fitt))}</div></div>
+      <div class="at-stat"><div class="at-stat-k">iterations</div><div class="at-stat-v">${_hEsc(String(iters))}</div></div>
     </div>
     <div style="font-size:0.82em;color:var(--fg-dim);">applied params: ${paramSummary}</div>
     <div class="at-result-actions">
