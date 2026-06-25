@@ -1785,12 +1785,18 @@ def benchmark_stream():
     last_event_id = flask_request.headers.get("Last-Event-ID")
     def generate():
         with _bench_cond:
+            cur_run = _bench_replay.run_id
             last_seq = _bench_replay.seq_for(last_event_id)
         while True:
             with _bench_cond:
+                if cur_run and _bench_replay.run_id != cur_run:
+                    return   # superseded by a newer run; client opens a fresh stream
+                cur_run = _bench_replay.run_id
                 new = _bench_replay.records_after_seq(last_seq)
                 if not new:
-                    _bench_cond.wait(timeout=30)
+                    _bench_cond.wait(timeout=10)
+                    if cur_run and _bench_replay.run_id != cur_run:
+                        return
                     new = _bench_replay.records_after_seq(last_seq)
             if not new:
                 yield 'data: {"type":"keepalive"}\n\n'
