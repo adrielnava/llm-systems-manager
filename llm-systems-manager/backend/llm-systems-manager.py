@@ -153,7 +153,7 @@ def _local_hostname() -> str:
 # banner reads it. Bump suffix (-1, -2, …) for same-day iterations; roll
 # the date for a new day's first change.
 # ---------------------------------------------------------------------------
-__version__ = "v2026.06.24-2"
+__version__ = "v2026.06.24-3"
 
 # Wall-clock at first import (Cheroot main process); the shutdown banner
 # reads it for the uptime line.
@@ -275,6 +275,8 @@ def init_db():
                 DROP TABLE _model_benchmarks_old;
             """)
             log.info("model_benchmarks migrated to per-agent schema (model_id, agent_id)")
+        if "avg_pg_tps" not in cols:
+            conn.execute("ALTER TABLE model_benchmarks ADD COLUMN avg_pg_tps REAL")
     conn.execute("""
             CREATE TABLE IF NOT EXISTS model_benchmarks (
                 id          INTEGER PRIMARY KEY,
@@ -282,6 +284,7 @@ def init_db():
                 agent_id    TEXT NOT NULL DEFAULT '',
                 avg_gen_tps REAL,
                 avg_ppt_tps REAL,
+                avg_pg_tps  REAL,
                 bench_tool  TEXT,
                 switches    TEXT,
                 ts          TEXT,
@@ -1806,7 +1809,7 @@ def benchmark_results():
         # The selected agent's rows plus legacy ('') rows; agent-specific wins
         # per model (ORDER puts agent rows first, the dedup below keeps them).
         rows = conn.execute(
-            "SELECT model_id, avg_gen_tps, avg_ppt_tps, bench_tool, switches, ts, agent_id "
+            "SELECT model_id, avg_gen_tps, avg_ppt_tps, bench_tool, switches, ts, agent_id, avg_pg_tps "
             "FROM model_benchmarks WHERE agent_id = ? OR agent_id = '' "
             "ORDER BY (agent_id = '') ASC",
             (agent_id,),
@@ -1823,6 +1826,7 @@ def benchmark_results():
                 "model_id":    r[0],
                 "avg_gen_tps": r[1],
                 "avg_ppt_tps": r[2],
+                "avg_pg_tps":  r[7],
                 "bench_tool":  r[3],
                 "switches":    switches,
                 "ts":          r[5],
@@ -1840,6 +1844,7 @@ def benchmark_store():
         model_id    = (data.get("model_id") or "").strip()
         avg_gen_tps = data.get("avg_gen_tps")
         avg_ppt_tps = data.get("avg_ppt_tps")
+        avg_pg_tps  = data.get("avg_pg_tps")
         bench_tool  = data.get("bench_tool") or ""
         switches    = data.get("switches") or []
         if not model_id:
@@ -1851,15 +1856,16 @@ def benchmark_store():
         conn = get_db()
         conn.execute(
             "INSERT INTO model_benchmarks "
-            "(model_id, agent_id, avg_gen_tps, avg_ppt_tps, bench_tool, switches, ts) "
-            "VALUES (?, ?, ?, ?, ?, ?, ?) "
+            "(model_id, agent_id, avg_gen_tps, avg_ppt_tps, avg_pg_tps, bench_tool, switches, ts) "
+            "VALUES (?, ?, ?, ?, ?, ?, ?, ?) "
             "ON CONFLICT(model_id, agent_id) DO UPDATE SET "
             "  avg_gen_tps=excluded.avg_gen_tps,"
             "  avg_ppt_tps=excluded.avg_ppt_tps,"
+            "  avg_pg_tps=excluded.avg_pg_tps,"
             "  bench_tool=excluded.bench_tool,"
             "  switches=excluded.switches,"
             "  ts=excluded.ts",
-            (model_id, agent_id, avg_gen_tps, avg_ppt_tps, bench_tool,
+            (model_id, agent_id, avg_gen_tps, avg_ppt_tps, avg_pg_tps, bench_tool,
              json.dumps(switches), ts)
         )
         conn.commit()
