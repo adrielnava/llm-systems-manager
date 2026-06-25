@@ -90,6 +90,7 @@ def main(argv=None) -> int:
             return 5
         li.cleanup_after_inplace(cfg, "release_binary", emit=emit)
     print(f"RESOLVED_BIN={resolved}")
+    print(f"RESOLVED_BUILD_DIR={li._build_root(cfg)}")
     return 0
 
 

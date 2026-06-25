@@ -89,6 +89,9 @@ LLAMA_SYSTEMD_UNIT_OVERRIDE=""
 LLAMA_BIN_OVERRIDE=""
 LLAMA_CONFIG_INI_OVERRIDE=""
 LLAMA_BUILD_METHOD_OVERRIDE=""
+LLAMA_BUILD_DIR_OVERRIDE=""
+LLAMA_BUILD_BACKEND_OVERRIDE=""
+LLAMA_BUILD_SCRIPT_OVERRIDE=""
 # Setup-time llama.cpp install via install/install_llama.py (run as the agent
 # user); wires LLAMA_BIN and the build method to the result.
 INSTALL_LLAMA=false
@@ -1938,8 +1941,8 @@ _binary_from_pid() {
   return 1
 }
 
-# _install_llama_now METHOD BACKEND — fresh-install llama.cpp as the agent
-# user via install/install_llama.py; prints the resolved binary path on success.
+# _install_llama_now METHOD BACKEND — fresh-install llama.cpp as the agent user
+# via install/install_llama.py; prints the binary then the build dir, one per line.
 _install_llama_now() {
   local method="$1" backend="$2"
   local helper="$SRC_DIR/install/install_llama.py"
@@ -1952,11 +1955,13 @@ _install_llama_now() {
                 --method "$method" --backend "$backend" --agent-user "$USER_ARG")"; then
     _err "llama.cpp install failed"; return 1
   fi
-  local bin="${out##*RESOLVED_BIN=}"
-  if [[ "$out" != *RESOLVED_BIN=* || -z "$bin" ]]; then
+  local bin builddir
+  bin="$(printf '%s\n' "$out" | sed -n 's/^RESOLVED_BIN=//p' | head -1)"
+  if [[ -z "$bin" ]]; then
     _err "installer did not report a binary path"; return 1
   fi
-  printf '%s\n' "$bin"
+  builddir="$(printf '%s\n' "$out" | sed -n 's/^RESOLVED_BUILD_DIR=//p' | head -1)"
+  printf '%s\n%s\n' "$bin" "$builddir"
 }
 
 # _render_llama_unit BIN USER CFG LOG — emit the starter unit text to stdout,
@@ -2144,7 +2149,8 @@ _detect_llama() {
 
   if ! $found; then
     echo "      ✗ no llama-server process; HTTP probe on :8080 failed"
-    local _llama_just_installed=false _llama_installed_method=""
+    local _llama_just_installed=false _llama_installed_method="" _llama_installed_backend=""
+    local _llama_installed_build_dir=""
     local _want_install=false
     if $INSTALL_LLAMA; then
       _want_install=true
@@ -2155,7 +2161,7 @@ _detect_llama() {
       esac
     fi
     if $_want_install; then
-      local _m="$INSTALL_LLAMA_METHOD" _b="$INSTALL_LLAMA_BACKEND" _newbin="" _v
+      local _m="$INSTALL_LLAMA_METHOD" _b="$INSTALL_LLAMA_BACKEND" _out="" _newbin="" _v
       # Retry loop: on failure, offer another method / quit / skip to manual.
       while true; do
         if [[ -t 0 ]] && ! $INSTALL_LLAMA; then
@@ -2164,11 +2170,14 @@ _detect_llama() {
           read -rp "      Backend (cpu/cuda/vulkan/rocm/metal) [$_b]: " _v
           _b="${_v:-$_b}"
         fi
-        if _newbin="$(_install_llama_now "$_m" "$_b")"; then
+        if _out="$(_install_llama_now "$_m" "$_b")"; then
+          _newbin="$(printf '%s\n' "$_out" | sed -n '1p')"
+          _llama_installed_build_dir="$(printf '%s\n' "$_out" | sed -n '2p')"
           detected_bin="$_newbin"
           detected_dir="$(dirname "$_newbin")"
           _llama_just_installed=true
           _llama_installed_method="$_m"
+          _llama_installed_backend="$_b"
           found=true
           _ok "llama.cpp installed → $_newbin"
           break
@@ -2231,21 +2240,34 @@ _detect_llama() {
     LLAMA_LOG_FILE_OVERRIDE="${detected_log:-${detected_dir:+$detected_dir/llama-server.log}}"
     LLAMA_CONFIG_INI_OVERRIDE="${detected_config}"
     LLAMA_BUILD_METHOD_OVERRIDE="${detected_build_method:-custom_script}"
+    case "$LLAMA_BUILD_METHOD_OVERRIDE" in
+      source|release_binary)
+        if [[ "${_llama_just_installed:-false}" == true ]]; then
+          LLAMA_BUILD_DIR_OVERRIDE="${_llama_installed_build_dir:-}"
+          LLAMA_BUILD_BACKEND_OVERRIDE="${_llama_installed_backend:-}"
+        fi
+        ;;
+      *) [[ -n "${detected_bin}" ]] && LLAMA_BUILD_DIR_OVERRIDE="$(dirname "$detected_bin")" ;;
+    esac
     return
   fi
 
-  local _v _default_dir _default_bin _default_log _default_ini
+  local _v _default_dir _default_bin _default_log _default_ini _bin_dir
   _default_dir="${detected_dir:-/usr/local/llama-server}"
   _default_bin="${detected_bin:-$_default_dir/llama-server}"
 
-  # Config file: prefer what was parsed from the running argv (most
-  # authoritative — that's the actual file llama-server has open), then
-  # check next-to-binary, then walk known locations. If nothing exists,
-  # leave the prompt default empty so the user knows to fill it in.
+  read -rp "      Binary path [$_default_bin]: " _v
+  LLAMA_BIN_OVERRIDE="${_v:-$_default_bin}"
+  # Seed config/log defaults from the directory of the binary just entered.
+  _bin_dir="$(dirname "$LLAMA_BIN_OVERRIDE")"
+
+  # Config file: argv-parsed wins, then next-to-binary, then known locations;
+  # empty default when nothing exists so the user knows to fill it in.
   if [[ -n "$detected_config" && -f "$detected_config" ]]; then
     _default_ini="$detected_config"
     echo "      ✓ config file discovered from running argv: $_default_ini"
   elif _default_ini="$(_first_existing \
+                        "$_bin_dir/config.ini" \
                         "$_default_dir/config.ini" \
                         "/usr/local/llama-server/config.ini" \
                         "/etc/llama-server/config.ini" \
@@ -2258,11 +2280,12 @@ _detect_llama() {
     echo "      ⓘ config file not auto-detected — set the path at the prompt below"
   fi
 
-  # Log file: same approach — argv > known locations > empty default.
+  # Log file: same approach — argv > next-to-binary > known locations > empty.
   if [[ -n "$detected_log" && -f "$detected_log" ]]; then
     _default_log="$detected_log"
     echo "      ✓ log file discovered from running argv: $_default_log"
   elif _default_log="$(_first_existing \
+                        "$_bin_dir/llama-server.log" \
                         "$_default_dir/llama-server.log" \
                         "/usr/local/llama-server/llama-server.log" \
                         "/var/log/llama-server.log")"; then
@@ -2271,9 +2294,6 @@ _detect_llama() {
     _default_log=""
     echo "      ⓘ log file not auto-detected — set the path at the prompt below"
   fi
-
-  read -rp "      Binary path [$_default_bin]: " _v
-  LLAMA_BIN_OVERRIDE="${_v:-$_default_bin}"
 
   # Config-file prompt allows blank when nothing was found; emit a
   # warning if the path the user supplies (or accepts) doesn't exist
@@ -2318,6 +2338,25 @@ _detect_llama() {
 
   read -rp "      Build method [$detected_build_method]: " _v
   LLAMA_BUILD_METHOD_OVERRIDE="${_v:-$detected_build_method}"
+
+  # Persist build dir + backend so a later llama upgrade matches the install.
+  # source/release: managed root (authoritative when we just installed; blank
+  # otherwise so _build_root defaults rather than mis-rooting on dir(bin)).
+  case "$LLAMA_BUILD_METHOD_OVERRIDE" in
+    source|release_binary)
+      if [[ "${_llama_just_installed:-false}" == true ]]; then
+        LLAMA_BUILD_DIR_OVERRIDE="${_llama_installed_build_dir:-}"
+        LLAMA_BUILD_BACKEND_OVERRIDE="${_llama_installed_backend:-}"
+      fi
+      ;;
+    *) LLAMA_BUILD_DIR_OVERRIDE="$_bin_dir" ;;
+  esac
+
+  # custom_script: record the build script so a later upgrade reruns the right one.
+  if [[ "$LLAMA_BUILD_METHOD_OVERRIDE" == "custom_script" ]]; then
+    read -rp "      Build script path [/usr/local/llama-server/build-llama-cpp.sh]: " _v
+    LLAMA_BUILD_SCRIPT_OVERRIDE="${_v:-/usr/local/llama-server/build-llama-cpp.sh}"
+  fi
 
   if [[ "${_llama_just_installed:-false}" == true ]]; then
     _offer_llama_unit "$LLAMA_SYSTEMD_UNIT_OVERRIDE" "$LLAMA_BIN_OVERRIDE"
@@ -3267,6 +3306,7 @@ if [[ ! -f "$INSTALL_DIR/agent_config.yaml" ]]; then
     "$ENABLE_PERF" "$ENABLE_LLAMA" "$ENABLE_LMS" "$ENABLE_OPENCLAW" "$ENABLE_IMGGEN" \
     "$LLAMA_API_URL_OVERRIDE" "$LLAMA_LOG_FILE_OVERRIDE" "$LLAMA_SYSTEMD_UNIT_OVERRIDE" \
     "$LLAMA_BIN_OVERRIDE" "$LLAMA_CONFIG_INI_OVERRIDE" "$LLAMA_BUILD_METHOD_OVERRIDE" \
+    "$LLAMA_BUILD_DIR_OVERRIDE" "$LLAMA_BUILD_BACKEND_OVERRIDE" "$LLAMA_BUILD_SCRIPT_OVERRIDE" \
     "$LMS_API_URL_OVERRIDE" "$LMS_CMD_OVERRIDE" \
     "$OPENCLAW_AGENTS_DIR_OVERRIDE" \
     "$ENABLE_MONITOR_MANAGER" "$ENABLE_MONITOR_ALARM" \
@@ -3278,6 +3318,7 @@ import sys, re
  perf, llama, lms, openclaw, imggen,
  llama_api, llama_log, llama_unit,
  llama_bin, llama_ini, llama_build_method,
+ llama_build_dir, llama_backend, llama_script,
  lms_api, lms_cmd,
  oc_dir,
  monitor_manager, monitor_alarm,
@@ -3305,6 +3346,30 @@ def _set(key, value):
 def _set_quoted(key, value):
     """Quoted variant — same semantics as _set but wraps value in double quotes."""
     _set(key, f'"{value}"')
+
+def _set_build_opt(key, value):
+    """Uncomment LLAMA_BUILD_OPTS and set its `key` child, preserving the other
+    commented per-method knob lines. Children are 2+-space-indented (under # or
+    live); scan stops at the next non-indented (sibling) line."""
+    global text
+    lines = text.split('\n')
+    hdr = next((i for i, ln in enumerate(lines)
+                if re.match(r'^[#\s]*LLAMA_BUILD_OPTS:', ln)), None)
+    child = f'  {key}: {value}'
+    if hdr is None:
+        text = text.rstrip() + f'\nLLAMA_BUILD_OPTS:\n{child}\n'
+        return
+    lines[hdr] = 'LLAMA_BUILD_OPTS:'
+    found, j = None, hdr + 1
+    while j < len(lines) and re.match(r'^#?\s{2,}\S', lines[j]):
+        if re.match(rf'^#?\s{{2,}}{re.escape(key)}:', lines[j]):
+            found = j
+        j += 1
+    if found is not None:
+        lines[found] = child
+    else:
+        lines.insert(hdr + 1, child)
+    text = '\n'.join(lines)
 
 # Identity
 _set('AGENT_OS',   agent_os)
@@ -3473,6 +3538,9 @@ if rules_for_host:
 if llama_bin:   _set_quoted('LLAMA_BIN',          llama_bin)
 if llama_ini:           _set_quoted('LLAMA_CONFIG_INI',   llama_ini)
 if llama_build_method:  _set_quoted('LLAMA_BUILD_METHOD', llama_build_method)
+if llama_build_dir:     _set_quoted('LLAMA_BUILD_DIR',    llama_build_dir)
+if llama_backend:       _set_build_opt('backend', llama_backend)
+if llama_script:        _set_build_opt('script_path', f'"{llama_script}"')
 if llama_log:   _set_quoted('LLAMA_LOG_FILE',     llama_log)
 if llama_api:   _set_quoted('LLAMA_API_URL',      llama_api)
 if llama_unit:  _set_quoted('LLAMA_SYSTEMD_UNIT', llama_unit)

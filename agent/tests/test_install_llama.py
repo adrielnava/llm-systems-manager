@@ -40,7 +40,8 @@ def _fake_leaf(*, plan_result="PLAN", run_result, raise_plan=False, flatten=None
     cleanup_after_inplace.called = None
     return types.SimpleNamespace(InstallError=_Err, plan=plan, run_install=run_install,
                                  flatten_release=flatten_release,
-                                 cleanup_after_inplace=cleanup_after_inplace)
+                                 cleanup_after_inplace=cleanup_after_inplace,
+                                 _build_root=lambda cfg: "/fake/build/root")
 
 
 def test_install_llama_prints_resolved_on_success(monkeypatch, capsys, tmp_path):
@@ -53,6 +54,7 @@ def test_install_llama_prints_resolved_on_success(monkeypatch, capsys, tmp_path)
     out = capsys.readouterr().out
     assert rc == 0
     assert f"RESOLVED_BIN={binp}" in out
+    assert "RESOLVED_BUILD_DIR=/fake/build/root" in out
     assert leaf.plan.seen["method"] == "release_binary"
     assert leaf.plan.seen["opts"]["backend"] == "cpu"
 
