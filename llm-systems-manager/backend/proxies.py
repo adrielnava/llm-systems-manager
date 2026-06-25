@@ -44,8 +44,8 @@ from typing import Callable
 from urllib.parse import urlparse, urlsplit
 
 import requests
-from flask import (Response, current_app, jsonify, request as flask_request,
-                   send_from_directory)
+from flask import (Response, current_app, has_request_context, jsonify,
+                   request as flask_request, send_from_directory)
 
 import agent_registry  # type: ignore[import-not-found]  # sibling
 import stream_pool  # type: ignore[import-not-found]  # sibling
@@ -421,9 +421,14 @@ def proxy_stream_to_primary(kind: str, path: str, *, primary_kind: "str | None" 
             upstream = None
             handed_off = False
             try:
+                _hdrs = {"Authorization": f"Bearer {agent['token']}"}
+                _leid = (flask_request.headers.get("Last-Event-ID")
+                         if has_request_context() else None)
+                if _leid:
+                    _hdrs["Last-Event-ID"] = _leid   # SSE resume → agent replay buffer
                 upstream = requests.get(
                     full,
-                    headers={"Authorization": f"Bearer {agent['token']}"},
+                    headers=_hdrs,
                     stream=True, timeout=(5, read_timeout),
                     **agent_registry.agent_tls_kwargs(full),
                 )
