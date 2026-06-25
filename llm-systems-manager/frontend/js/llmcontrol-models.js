@@ -297,6 +297,7 @@ function renderModelCards() {
         <div style="display:flex;gap:6px;padding:3px 3px;">
           <span class="bench-badge-chip">ppt ${Number(_benchData[modelId].avg_ppt_tps ?? 0).toFixed(0)} t/s</span>
           <span class="bench-badge-chip">gen ${Number(_benchData[modelId].avg_gen_tps ?? 0).toFixed(1)} t/s</span>
+          ${_benchData[modelId].avg_pg_tps != null ? `<span class="bench-badge-chip">pg ${Number(_benchData[modelId].avg_pg_tps).toFixed(0)} t/s</span>` : ''}
         </div>
       </div>` : ''}
       ${isLoaded ? `<div class="model-card-perf" id="perf-${safeModelId}">

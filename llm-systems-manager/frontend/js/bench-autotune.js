@@ -1496,7 +1496,7 @@ function _benchAddModelResultRow(modelId, _unused1, _unused2, tool) {
   saveBtn.textContent = '💾 Save';
   saveBtn.style.fontSize = '0.78em';
   saveBtn.addEventListener('click', () => {
-    saveBenchmark(modelId, maxGen, maxPpt, tool, saveBtn);
+    saveBenchmark(modelId, maxGen, maxPpt, maxPg, tool, saveBtn);
   });
 
   const clearBtn = document.createElement('button');
@@ -1525,15 +1525,15 @@ function _benchAddModelResultRow(modelId, _unused1, _unused2, tool) {
 }
 
 // Save benchmark results for a model to the backend, then update local state and UI. Called when user clicks "Save" on a model's benchmark result row.
-function saveBenchmark(model_id, avg_gen_tps, avg_ppt_tps, tool, saveBtn) {
+function saveBenchmark(model_id, avg_gen_tps, avg_ppt_tps, avg_pg_tps, tool, saveBtn) {
   if (!model_id) return;
   fetch('/api/benchmark/store', {
     method: 'POST',
     headers: {'Content-Type':'application/json'},
-    body: JSON.stringify({model_id, avg_gen_tps, avg_ppt_tps, bench_tool: tool, switches: _benchSwitches})
+    body: JSON.stringify({model_id, avg_gen_tps, avg_ppt_tps, avg_pg_tps, bench_tool: tool, switches: _benchSwitches})
   }).then(r => r.json()).then(d => {
     if (!d.ok) { alert(d.error || 'Save failed'); return; }
-    _benchData[model_id] = {model_id, avg_gen_tps, avg_ppt_tps, bench_tool: tool};
+    _benchData[model_id] = {model_id, avg_gen_tps, avg_ppt_tps, avg_pg_tps, bench_tool: tool};
     if (saveBtn) saveBtn.textContent = '✓ Saved';
     if (typeof renderModelCards === 'function') renderModelCards();
   }).catch(e => alert('Save failed: ' + e));

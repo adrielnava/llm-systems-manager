@@ -1711,7 +1711,9 @@ def _bench_run_one(model_id: str, tool: str, switches: list, env: dict) -> None:
         _bench_put({"type": "model_done", "model_id": model_id, "ok": False,
                     "error": f"no HF reference found for {model_id}"})
         return
-    jsonl_flags = ["-o", "jsonl"]
+    # batched-bench takes --output-format; llama-bench takes -o
+    jsonl_flags = (["--output-format", "jsonl"] if tool == "llama-batched-bench"
+                   else ["-o", "jsonl"])
     cmd = [tool_path]
     for sw in switches or []:
         flag = (sw.get("flag") or "").strip()
