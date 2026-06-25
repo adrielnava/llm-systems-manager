@@ -49,6 +49,13 @@ describe('computeBenchAxisOptions', () => {
     expect(xv(r)).toContain('threads');
   });
 
+  it('maps short bench flags to their JSONL field (-d -> n_depth) and defaults X to it', () => {
+    const r = computeBenchAxisOptions([{ avg_ts: 1 }, { avg_ts: 2 }], [{ flag: '-d', value: '0,512' }]);
+    expect(xv(r)).toContain('n_depth');
+    expect(xv(r)).not.toContain('d');
+    expect(r.defaultX).toBe('n_depth');
+  });
+
   it('prefers n_depth as default X even when other dims also vary', () => {
     const rows = [
       { n_depth: 0, n_batch: 256, avg_ts: 1 },

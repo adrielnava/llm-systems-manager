@@ -7,6 +7,7 @@ let _benchData          = {};   // model_id → stored results (DB)
 let _benchSwitches      = [];   // current editable switch list
 let _benchModelDatasets = {};   // model_id → dataset index pair
 let _benchRawRows       = [];   // all result rows for axis re-render: {model_id, ts, seq, gen_tps, ppt_tps, n_prompt, n_gen, n_depth, n_batch, n_ubatch, avg_ts}
+let _benchAxisTouched   = false; // true once the user picks an axis; until then dropdowns honor the computed default (n_depth / avg_ts)
 
 const BENCH_COLOR_PAIRS = [
   {gen: '#5a8fc2', ppt: '#c28a3a'},   // steel blue / warm amber
@@ -103,20 +104,24 @@ function _benchSetState(state) {
 }
 
 function _rechartBench() {
-  const xAxis = document.getElementById('benchXAxis')?.value || 'seq';
-  // Preserve dataset configs (labels + colors) but clear data
-  const dsConfigs = (_benchChart?.data.datasets || []).map(d => ({...d, data: []}));
-  if (_benchChart) { try { _benchChart.destroy(); } catch(_) {} _benchChart = null; }
-  _benchChart = _mkBenchChart('benchChart', xAxis);
+  _benchAxisTouched = true;   // user picked an axis — stop overriding with the default
   if (!_benchChart) return;
-  dsConfigs.forEach(d => _benchChart.data.datasets.push(d));
-  // Re-plot all stored rows
+  const xAxis = document.getElementById('benchXAxis')?.value || 'seq';
+  // The bar chart's x scale is always a category — changing axes only re-plots
+  // the data and relabels the axes. Rebuilding the chart here left it blank
+  // (the recreated instance inherited the old datasets' stale internal state).
+  const xs = _benchChart.options?.scales?.x;
+  if (xs && xs.title) { xs.title.display = !!xAxis && xAxis !== 'seq'; xs.title.text = xAxis || 'sequence'; }
+  const yAxis = document.getElementById('benchYAxis')?.value || 'avg_ts';
+  const ys = _benchChart.options?.scales?.y;
+  if (ys && ys.title) { ys.title.text = yAxis === 'ms_tok' ? 'ms/tok' : yAxis === 'avg_ts' ? 't/s' : yAxis; }
+  // Clear and re-plot every stored row against the newly-selected axes.
+  _benchChart.data.datasets.forEach(d => { d.data = []; });
   _benchRawRows.forEach(r => {
     const dsIdx = _benchModelDatasets[r.model_id];
     if (dsIdx === undefined) return;
-    let x = _benchGetX(r);
+    const x = String(_benchGetX(r));   // bar chart needs category (string) x values
     const y = _benchGetY(r);
-    x = String(x);   // bar chart needs category (string) x values
     if (r.n_gen > 0) {
       _benchChart.data.datasets[dsIdx].data.push({x, y});
     } else if (r.n_prompt > 0) {
@@ -200,11 +205,15 @@ function _benchAxisOptsFallback(rows, switches, labelFn) {
     });
   });
   const varied = Object.keys(distinct).filter((k) => distinct[k].size >= 2);
+  const FLAG_TO_FIELD = {
+    p: 'n_prompt', n: 'n_gen', d: 'n_depth', b: 'n_batch', ub: 'n_ubatch',
+    t: 'n_threads', ngl: 'n_gpu_layers', fa: 'flash_attn', ctk: 'type_k', ctv: 'type_v', mmp: 'no_mmap',
+  };
   const switchKeys = [];
   (switches || []).forEach((sw) => {
     if (!sw || typeof sw.flag !== 'string') return;
     const name = sw.flag.replace(/^--?/, '').trim();
-    if (name) switchKeys.push(name);
+    if (name) switchKeys.push(FLAG_TO_FIELD[name] || name);
   });
   const fieldKeys = [...new Set([...varied, ...switchKeys])].sort();
   const xOptions = [...fieldKeys, 'seq'].map((k) => ({ v: k, t: label(k) }));
@@ -238,13 +247,15 @@ function _updateBenchAxisOpts() {
       opt.textContent = t;
       sel.appendChild(opt);
     });
-    sel.value = opts.some(o => o.v === cur) ? cur : dflt;
+    sel.value = (_benchAxisTouched && opts.some(o => o.v === cur)) ? cur : dflt;
   };
   fill(xSel, xOptions, curX, defaultX);
   fill(ySel, yOptions, curY, defaultY);
 }
 
 function _benchAddModelDatasets(modelId) {
+  // Lazy-create the chart if openBench's init didn't stick, so results always plot.
+  if (!_benchChart) { try { _benchChart = _mkBenchChart('benchChart'); } catch (e) { console.warn('benchChart init failed', e); } }
   if (!_benchChart) return;
   if (_benchModelDatasets[modelId] !== undefined) return;
   const colorIdx = Object.keys(_benchModelDatasets).length % BENCH_COLOR_PAIRS.length;
@@ -457,19 +468,21 @@ async function openBench(modelId) {
   });
   _updateBenchModelLabel();
 
-  // Reset UI state
+  // Reset UI state — clear data BEFORE switchBenchTab so its axis update sees a
+  // clean slate and honors the default axes (n_depth / avg_ts).
+  _benchModelDatasets = {};
+  _benchRawRows = [];
+  _benchAxisTouched = false;
+  if (_benchChart) {
+    _benchChart.data.datasets = [];
+    _benchChart.update('none');
+  }
   switchBenchTab('llama-bench');
   _benchLogClear();
   _benchRenderPlaceholder();
   document.getElementById('benchStatus').textContent = 'idle';
   _benchSetState('idle');
   document.getElementById('benchRunBtn').disabled = false;
-  if (_benchChart) {
-    _benchChart.data.datasets = [];
-    _benchChart.update('none');
-  }
-  _benchModelDatasets = {};
-  _benchRawRows = [];
   _benchSetChartIdle(true);
 }
 
@@ -520,6 +533,7 @@ function switchBenchTab(tool) {
   _benchSwitches = (BENCH_DEFAULTS[tool] || []).map(s => ({...s}));
   _renderBenchSwitches();
   _updateBenchSwitchLabel();
+  _updateBenchAxisOpts();   // populate axis dropdowns from the default switches on open
 }
 
 // Render the list of benchmark switches in the UI, allowing editing and deletion
@@ -547,7 +561,11 @@ function _renderBenchSwitches() {
     const delBtn = document.createElement('button');
     delBtn.className = 'bench-del-btn';
     delBtn.textContent = '✕';
-    delBtn.addEventListener('click', () => {
+    delBtn.addEventListener('click', (e) => {
+      // Stop the click reaching boot.js's document handler: the re-render below
+      // detaches this button, so closest('.bench-dropdown') would read null and
+      // close the switch dropdown.
+      e.stopPropagation();
       _benchSwitches.splice(i, 1);
       _renderBenchSwitches();
       _updateBenchSwitchLabel();
