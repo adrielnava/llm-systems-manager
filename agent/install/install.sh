@@ -113,7 +113,11 @@ DO_UNINSTALL=false          # --uninstall mode
 INSTALL_PERF_UNITS=false    # drop example performance/powersave systemd units
 FORCE_OVERWRITE_PERF=false  # allow clobbering existing perf units (backs up first)
 
-VERSION="v2026.06.11-3"
+# Banner version — read from the agent source so it tracks
+# llm-systems-agent.py's VERSION instead of drifting out of date.
+VERSION="$(sed -n 's/^VERSION[[:space:]]*=[[:space:]]*"\([^"]*\)".*/\1/p' \
+  "$(dirname "$0")/../llm-systems-agent.py" 2>/dev/null | head -n1)"
+[[ -n "$VERSION" ]] || VERSION="unknown"
 
 usage() {
   cat <<'EOF'
