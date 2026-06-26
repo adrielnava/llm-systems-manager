@@ -687,9 +687,16 @@ Config bootstrap complete.
     [manager].stream_proxy_port = 5445 # off-pool llama-state SSE daemon
     [alarm_engine].tls_enabled = true  # AE HTTPS (cert pre-issued above)
     [alarm_engine].ingest_token = <set by installer>  # agent push auth
+EOF
+
+# Split install (manager here, AE on another host) needs the AE TLS cert
+# copied over; a co-located install (HAS_AE=1) keeps both on this box.
+if (( HAS_MGR && ! HAS_AE )); then
+  cat <<EOF
 
   Split install? Copy the AE TLS cert and key to the AE host.
   The manager issues them on its first startup into its own data dir:
     scp $INSTALL_DIR/data/ae-tls.{crt,key} \\
         <ae-host>:$INSTALL_DIR/llm-systems-alarm-engine/data/
 EOF
+fi
