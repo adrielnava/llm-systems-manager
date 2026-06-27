@@ -94,7 +94,6 @@ function closeTerminal() {
 }
 
 function popOutTerminal() {
-  const host = location.host;
   // Pop-out builds absolute URLs the fetch wrapper skips, so inject the picker
   // selection into create directly (sid-routed IO follows the owning agent).
   const agentParam = (typeof _selectedAgent === 'function' && _selectedAgent('llama'))
@@ -102,13 +101,13 @@ function popOutTerminal() {
   const w = window.open('', 'llmterm', 'width=900,height=540,resizable=yes,scrollbars=no,toolbar=no,menubar=no');
   w.document.write(`<!DOCTYPE html><html><head>
     <title>Terminal — Server</title>
-    <link rel="stylesheet" href="https://cdn.jsdelivr.net/npm/xterm@5.3.0/css/xterm.min.css"/>
-    <script src="https://cdn.jsdelivr.net/npm/xterm@5.3.0/lib/xterm.min.js"><\/script>
-    <script src="https://cdn.jsdelivr.net/npm/xterm-addon-fit@0.8.0/lib/xterm-addon-fit.min.js"><\/script>
+    <link rel="stylesheet" href="${location.origin}/static/vendor/xterm.min.css?v=5.3.0"/>
+    <script src="${location.origin}/static/vendor/xterm.min.js?v=5.3.0"><\/script>
+    <script src="${location.origin}/static/vendor/xterm-addon-fit.min.js?v=0.8.0"><\/script>
     <style>html,body{margin:0;background:var(--bg-tabnav);height:100%;} #t{height:100%;}</style>
   </head><body><div id="t"></div><script>
   (async function(){
-    const base = 'http://${host}';
+    const base = '${location.origin}';
     const term = new Terminal({theme:{background:'#0d0d0d',foreground:'#ccc',cursor:'#7af'},fontFamily:'"Cascadia Code","Fira Code",monospace',fontSize:13,cursorBlink:true,scrollback:5000});
     const fit  = new FitAddon.FitAddon();
     term.loadAddon(fit);
@@ -208,19 +207,18 @@ function closeLmsTerminal() {
 }
 
 function popOutLmsTerminal() {
-  const host = location.host;
   const agentParam = (typeof _selectedAgent === 'function' && _selectedAgent('lms'))
     ? ('?agent=' + encodeURIComponent(_selectedAgent('lms'))) : '';
   const w = window.open('', 'lmsterm', 'width=900,height=540,resizable=yes,scrollbars=no,toolbar=no,menubar=no');
   w.document.write(`<!DOCTYPE html><html><head>
     <title>Terminal — Agent</title>
-    <link rel="stylesheet" href="https://cdn.jsdelivr.net/npm/xterm@5.3.0/css/xterm.min.css"/>
-    <script src="https://cdn.jsdelivr.net/npm/xterm@5.3.0/lib/xterm.min.js"><\/script>
-    <script src="https://cdn.jsdelivr.net/npm/xterm-addon-fit@0.8.0/lib/xterm-addon-fit.min.js"><\/script>
+    <link rel="stylesheet" href="${location.origin}/static/vendor/xterm.min.css?v=5.3.0"/>
+    <script src="${location.origin}/static/vendor/xterm.min.js?v=5.3.0"><\/script>
+    <script src="${location.origin}/static/vendor/xterm-addon-fit.min.js?v=0.8.0"><\/script>
     <style>html,body{margin:0;background:var(--bg-tabnav);height:100%;} #t{height:100%;}</style>
   </head><body><div id="t"></div><script>
   (async function(){
-    const base = 'http://${host}';
+    const base = '${location.origin}';
     const term = new Terminal({theme:{background:'#0d0d0d',foreground:'#ccc',cursor:'#7af'},fontFamily:'"Cascadia Code","Fira Code",monospace',fontSize:13,cursorBlink:true,scrollback:5000});
     const fit  = new FitAddon.FitAddon();
     term.loadAddon(fit);
