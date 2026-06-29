@@ -287,7 +287,7 @@ function mkChart(id, label, color) {
     data: { labels: [], datasets: [{ label, data: [], borderColor: color, borderWidth: 1.5, pointRadius: 0, pointHoverRadius: 4, fill: false, tension: 0.2 }] },
     options: { animation: false, responsive: true, maintainAspectRatio: false,
       interaction: _sparkInteraction,
-      plugins: { legend: { display: false }, tooltip: _sparkTooltip, zoom: _zoomOpts },
+      plugins: { legend: { display: false }, tooltip: _sparkTooltip, zoom: _zoomOpts, annotation: { annotations: {} } },
       scales: { x: xAxis, y: { beginAtZero: true, ticks: { color: cssVar('--fg-muted'), font: { size: 10 } }, grid: { color: cssVar('--border-soft') } } }
     }
   });
@@ -309,7 +309,7 @@ function mkMultiChart(id, lines) {
     },
     options: { animation: false, responsive: true, maintainAspectRatio: false,
       interaction: _sparkInteraction,
-      plugins: { legend: { display: false }, tooltip: _sparkTooltip, zoom: _zoomOpts },
+      plugins: { legend: { display: false }, tooltip: _sparkTooltip, zoom: _zoomOpts, annotation: { annotations: {} } },
       scales: { x: xAxis, y: { beginAtZero: true, ticks: { color: cssVar('--fg-muted'), font: { size: 10 } }, grid: { color: cssVar('--border-soft') } } }
     }
   });
@@ -354,7 +354,7 @@ function mkDualChart(id, l1, c1, l2, c2) {
     ]},
     options: { animation: false, responsive: true, maintainAspectRatio: false,
       interaction: _sparkInteraction,
-      plugins: { legend: { display: false }, tooltip: _sparkTooltip, zoom: _zoomOpts },
+      plugins: { legend: { display: false }, tooltip: _sparkTooltip, zoom: _zoomOpts, annotation: { annotations: {} } },
       scales: { x: xAxis, y: { beginAtZero: true, ticks: { color: cssVar('--fg-muted'), font: { size: 10 } }, grid: { color: cssVar('--border-soft') } } }
     }
   });
@@ -400,7 +400,7 @@ const diskUsageChart = new Chart(diskUsageCtx, {
   ]},
   options: { animation: false, responsive: true, maintainAspectRatio: false,
     interaction: _sparkInteraction,
-    plugins: { legend: { display: false }, tooltip: _sparkTooltip, zoom: _zoomOpts },
+    plugins: { legend: { display: false }, tooltip: _sparkTooltip, zoom: _zoomOpts, annotation: { annotations: {} } },
     scales: { x: xAxis, y: { min: 0, max: 100, ticks: { color: cssVar('--fg-muted'), font: { size: 10 }, callback: v => v + '%' }, grid: { color: cssVar('--border-soft') } } }
   }
 });
@@ -1324,10 +1324,9 @@ function _applyThresholds() {
   const host = _thresholdHost();
   Object.values(Chart.instances).forEach(c => {
     const meta = c && c.canvas && CHART_METRIC[c.canvas.id];
-    if (!meta) return;
+    if (!meta || !(c.options.plugins && c.options.plugins.annotation)) return;
     try {
-      c.options.plugins = c.options.plugins || {};
-      c.options.plugins.annotation = { annotations: Thresholds.thresholdAnnotations(_alarmRules, { source: meta.source, metricName: meta.metric_name, host, hostWildcard: false }) };
+      c.options.plugins.annotation.annotations = Thresholds.thresholdAnnotations(_alarmRules, { source: meta.source, metricName: meta.metric_name, host, hostWildcard: false });
       c.update('none');
     } catch (_) {}
   });

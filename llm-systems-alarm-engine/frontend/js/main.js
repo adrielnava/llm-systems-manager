@@ -2645,10 +2645,9 @@ const ChartManager = {
     // load post-render). Reads each chart's stored metric identity.
     refreshAnnotations() {
         [this._mainChart, this._historyChart].forEach(c => {
-            if (!c || !c.$ident) return;
+            if (!c || !c.$ident || !(c.options.plugins && c.options.plugins.annotation)) return;
             try {
-                c.options.plugins = c.options.plugins || {};
-                c.options.plugins.annotation = { annotations: this._thresholdAnnotations(c.$ident.host, c.$ident.source, c.$ident.metricName) };
+                c.options.plugins.annotation.annotations = this._thresholdAnnotations(c.$ident.host, c.$ident.source, c.$ident.metricName);
                 c.update('none');
             } catch (_) {}
         });
