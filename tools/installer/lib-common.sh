@@ -455,6 +455,7 @@ deploy_into_install_dir() {
               --exclude='tests/' --exclude='pytest.ini' \
               --exclude='requirements-dev.txt' \
               --exclude='.pytest_cache/' \
+              --exclude='node_modules/' --exclude='test/' \
               "${rsync_extra[@]}" \
               "$src/" "$dest/"
   $SUDO chown -R "$LLMSYS_RUN_USER:$LLMSYS_RUN_GROUP" "$dest"
