@@ -258,6 +258,7 @@ RSYNC_EXCLUDES=(
   --exclude='tests/' --exclude='pytest.ini'
   --exclude='requirements-dev.txt'
   --exclude='.pytest_cache/'
+  --exclude='node_modules/' --exclude='test/'
 )
 
 # files_changed <src_dir> <dest_dir> [rsync_extra_args...]
