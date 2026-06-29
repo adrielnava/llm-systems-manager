@@ -39,6 +39,6 @@ function computeBenchAxisOptions(rows, switches, labelFn) {
   return { xOptions, yOptions, defaultX, defaultY: 'avg_ts' };
 }
 
-const _API = { computeBenchAxisOptions };
+const _BENCH_API = { computeBenchAxisOptions };
 if (typeof window !== 'undefined') window.computeBenchAxisOptions = computeBenchAxisOptions;
-if (typeof module !== 'undefined' && module.exports) module.exports = _API;
+if (typeof module !== 'undefined' && module.exports) module.exports = _BENCH_API;

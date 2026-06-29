@@ -50,6 +50,6 @@ function resolveSizeMap(layout, provider, agentId, seedIds) {
   return byAgent[agentId];
 }
 
-const _API = { PER_AGENT_HIDDEN, PER_AGENT_ORDER, resolveHiddenList, resolveOrderList, resolveSizeMap };
-if (typeof window !== 'undefined') window.LMLayout = _API;
-if (typeof module !== 'undefined' && module.exports) module.exports = _API;
+const _LAYOUT_API = { PER_AGENT_HIDDEN, PER_AGENT_ORDER, resolveHiddenList, resolveOrderList, resolveSizeMap };
+if (typeof window !== 'undefined') window.LMLayout = _LAYOUT_API;
+if (typeof module !== 'undefined' && module.exports) module.exports = _LAYOUT_API;
